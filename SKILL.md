@@ -35,6 +35,13 @@ python3 convs.py --days 7
 python3 convs.py --date 2026-03-19
 ```
 
+Installed CLI:
+
+```bash
+conversation-mining --no-open
+python3 -m conversation_mining --days 7
+```
+
 ## Output
 
 The tool writes:

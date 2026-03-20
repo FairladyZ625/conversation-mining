@@ -49,6 +49,28 @@ That will:
 3. build `./exported_conversations/index.html`
 4. open the viewer on macOS
 
+## Install As a CLI
+
+Editable install:
+
+```bash
+python3 -m pip install -e .
+conversation-mining --no-open
+```
+
+Run as a module:
+
+```bash
+python3 -m conversation_mining --days 7
+```
+
+With `pipx`:
+
+```bash
+pipx install .
+conversation-mining --date 2026-03-19
+```
+
 ## Use As a Skill
 
 This repository also includes [SKILL.md](./SKILL.md).

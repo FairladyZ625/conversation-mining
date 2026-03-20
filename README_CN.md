@@ -50,6 +50,28 @@ python3 convs.py
 3. 生成 `./exported_conversations/index.html`
 4. 在 macOS 上自动打开查看器
 
+## 作为 CLI 安装
+
+可编辑安装：
+
+```bash
+python3 -m pip install -e .
+conversation-mining --no-open
+```
+
+按模块运行：
+
+```bash
+python3 -m conversation_mining --days 7
+```
+
+用 `pipx`：
+
+```bash
+pipx install .
+conversation-mining --date 2026-03-19
+```
+
 ## 作为 Skill 使用
 
 仓库里已经包含 [SKILL.md](./SKILL.md)。
