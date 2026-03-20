@@ -10,6 +10,11 @@ This project is designed for local forensics and recall:
 - copy a conversation reference/prompt for handoff to another AI
 - inspect AG task artifacts when Antigravity leaves local files behind
 
+It can be used in two ways:
+
+- as a standalone local script/tool
+- as an installable skill via [SKILL.md](./SKILL.md)
+
 ## What It Supports
 
 - Claude Code
@@ -43,6 +48,17 @@ That will:
 2. write Markdown files into `./exported_conversations`
 3. build `./exported_conversations/index.html`
 4. open the viewer on macOS
+
+## Use As a Skill
+
+This repository also includes [SKILL.md](./SKILL.md).
+
+If your agent supports skill installation from a git repository, install this repo as a skill and then invoke `conversation-mining` for:
+
+- locating a conversation by date or id
+- exporting recent history
+- opening the local viewer
+- generating a handoff reference/prompt
 
 ## Common Commands
 

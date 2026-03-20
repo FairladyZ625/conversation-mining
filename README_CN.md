@@ -10,6 +10,11 @@
 - 复制 `Conversation reference / prompt` 交给别的 AI 接手
 - 当 Antigravity 留下本地产物时，直接查看对应 `task.md / implementation_plan.md / walkthrough.md`
 
+它现在同时支持两种形态：
+
+- 独立脚本 / 本地工具
+- 可安装 skill，入口见 [SKILL.md](./SKILL.md)
+
 ## 当前支持
 
 - Claude Code
@@ -44,6 +49,17 @@ python3 convs.py
 2. 把 Markdown 写到 `./exported_conversations`
 3. 生成 `./exported_conversations/index.html`
 4. 在 macOS 上自动打开查看器
+
+## 作为 Skill 使用
+
+仓库里已经包含 [SKILL.md](./SKILL.md)。
+
+如果你的 agent 支持从 git 仓库安装 skill，那么装好以后就可以直接把它当 `conversation-mining` 来用，适合：
+
+- 按日期或会话 id 定位原始对话
+- 增量导出最近历史
+- 打开本地 viewer
+- 生成可交接给其他 AI 的 reference / prompt
 
 ## 常用命令
 
