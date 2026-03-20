@@ -1,0 +1,131 @@
+# conversation-mining
+
+把本地的 Claude Code、Codex、Antigravity 对话导出成 Markdown，并生成一个静态 HTML 查看器。
+
+这个项目适合做本地回溯和取证：
+
+- 全量或增量导出历史对话
+- 在一个页面里统一浏览
+- 深链定位某条会话
+- 复制 `Conversation reference / prompt` 交给别的 AI 接手
+- 当 Antigravity 留下本地产物时，直接查看对应 `task.md / implementation_plan.md / walkthrough.md`
+
+## 当前支持
+
+- Claude Code
+  - 读取 `~/.claude/projects/*/*.jsonl`
+  - 重建主会话和子代理关系
+- Codex
+  - 读取 `~/.codex/sessions`、`history.jsonl`、`state_5.sqlite`
+- Antigravity
+  - 读取 `~/Library/Application Support/Antigravity/.../state.vscdb`
+  - 提取 trajectory summaries
+  - 尝试把 AG 会话关联到 `~/.gemini/antigravity/brain/<uuid>/` 里的本地产物
+
+## 现状说明
+
+这是一个面向本地使用的实用工具，不是官方 SDK。
+
+- Claude / Codex 一般能拿到比较完整的 transcript
+- Antigravity 目前更像“任务摘要提取”，不是完整连续聊天还原
+- AG 产物关联只在本地 brain workspace id 能稳定匹配时生效
+
+## 快速开始
+
+```bash
+git clone git@github.com:FairladyZ625/conversation-mining.git
+cd conversation-mining
+python3 convs.py
+```
+
+默认会：
+
+1. 导出最近的对话
+2. 把 Markdown 写到 `./exported_conversations`
+3. 生成 `./exported_conversations/index.html`
+4. 在 macOS 上自动打开查看器
+
+## 常用命令
+
+只导出今天并构建查看器：
+
+```bash
+python3 convs.py --no-open
+```
+
+回扫最近 7 天：
+
+```bash
+python3 convs.py --days 7
+```
+
+导出某一天：
+
+```bash
+python3 convs.py --date 2026-03-19
+```
+
+写到自定义目录：
+
+```bash
+python3 convs.py --output-dir ~/tmp/conversation-mining-output
+```
+
+高级用法：只导出 JSON / Markdown，不构建 viewer：
+
+```bash
+python3 export_all.py --days 7 --output-dir ./exported_conversations
+```
+
+## 产物结构
+
+```text
+exported_conversations/
+  conversations.json
+  index.html
+  2026-03-19/
+    claude_*.md
+    codex_*.md
+    ag_*.md
+```
+
+## Viewer 功能
+
+- 来源筛选：Claude / Codex / AG
+- 支持按标题、消息、工作区、标签、AG 产物信息搜索
+- 白天 / 夜间模式
+- 阅读模式：
+  - 主线
+  - 主线 + 子代理
+  - 全量
+- 速览卡片：
+  - Final answer
+  - Key files
+  - Commands
+  - Signals
+- 时间线回放
+- 收藏、标签、分类
+- 按工作区分组
+- Related task threads
+- AG `Artifacts` 卡片，可直接打开本地文件
+
+## 已知限制
+
+- AG 不保证本地一定有完整聊天记录
+- AG 产物关联目前只是部分覆盖
+- viewer 主要面向本地文件使用
+- 收藏 / 标签 / 分类目前存储在浏览器 `localStorage`
+
+## 隐私提醒
+
+这个工具会读取本地应用状态和本地会话历史。
+
+在发布导出结果前，请先检查：
+
+- 对话内容里可能包含密钥或敏感信息
+- transcript Markdown 里可能带有绝对路径
+- AG artifact 路径会暴露你的本地工作区结构
+
+## License
+
+MIT
