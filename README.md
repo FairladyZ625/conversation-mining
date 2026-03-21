@@ -51,9 +51,10 @@ python3 convs.py
 That will:
 
 1. export recent conversations
-2. write Markdown files into `./exported_conversations`
-3. build `./exported_conversations/index.html`
-4. open the viewer on macOS
+2. write JSON + viewer assets into `./exported_conversations`
+3. write human-readable Markdown transcripts into a separate transcript directory
+4. build `./exported_conversations/index.html`
+5. open the viewer on macOS
 
 ## Install As a CLI
 
@@ -114,6 +115,12 @@ Write to a custom output directory:
 python3 convs.py --output-dir ~/tmp/conversation-mining-output
 ```
 
+Write Markdown transcripts to a custom directory:
+
+```bash
+python3 convs.py --markdown-dir /Volumes/LIZEYU/Converstions
+```
+
 Advanced: export only JSON/Markdown without building the viewer:
 
 ```bash
@@ -126,6 +133,12 @@ python3 export_all.py --days 7 --output-dir ./exported_conversations
 exported_conversations/
   conversations.json
   index.html
+```
+
+Separate human-readable transcripts:
+
+```text
+/Volumes/LIZEYU/Converstions/
   2026-03-19/
     claude_*.md
     codex_*.md

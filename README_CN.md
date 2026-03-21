@@ -52,9 +52,10 @@ python3 convs.py
 默认会：
 
 1. 导出最近的对话
-2. 把 Markdown 写到 `./exported_conversations`
-3. 生成 `./exported_conversations/index.html`
-4. 在 macOS 上自动打开查看器
+2. 把 JSON 和 viewer 产物写到 `./exported_conversations`
+3. 把给人读的 Markdown transcript 写到独立 transcript 目录
+4. 生成 `./exported_conversations/index.html`
+5. 在 macOS 上自动打开查看器
 
 ## 作为 CLI 安装
 
@@ -115,6 +116,12 @@ python3 convs.py --date 2026-03-19
 python3 convs.py --output-dir ~/tmp/conversation-mining-output
 ```
 
+把 Markdown transcript 写到指定目录：
+
+```bash
+python3 convs.py --markdown-dir /Volumes/LIZEYU/Converstions
+```
+
 高级用法：只导出 JSON / Markdown，不构建 viewer：
 
 ```bash
@@ -127,6 +134,12 @@ python3 export_all.py --days 7 --output-dir ./exported_conversations
 exported_conversations/
   conversations.json
   index.html
+```
+
+独立的人类可读 transcript：
+
+```text
+/Volumes/LIZEYU/Converstions/
   2026-03-19/
     claude_*.md
     codex_*.md

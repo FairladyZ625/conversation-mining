@@ -17,12 +17,14 @@ VIEWER_TEMPLATE = PACKAGE_ROOT / "viewer.html"
 DEFAULT_OUTPUT_BASE = REPO_ROOT / "exported_conversations"
 
 
-def run_export(days: int, date: str | None, output_dir: Path) -> bool:
+def run_export(days: int, date: str | None, output_dir: Path, markdown_dir: str | None) -> bool:
     cmd = [sys.executable, str(EXPORT_ALL), "--output-dir", str(output_dir)]
     if date:
         cmd += ["--date", date]
     if days > 1:
         cmd += ["--days", str(days)]
+    if markdown_dir:
+        cmd += ["--markdown-dir", markdown_dir]
     result = subprocess.run(cmd, cwd=str(REPO_ROOT))
     return result.returncode == 0
 
@@ -72,13 +74,14 @@ def main():
         default=str(DEFAULT_OUTPUT_BASE),
         help=f"Directory for exported data (default: {DEFAULT_OUTPUT_BASE})",
     )
+    parser.add_argument("--markdown-dir", help="Directory for human-readable markdown transcripts")
     parser.add_argument("--no-open", action="store_true", help="Build the viewer without opening it")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir).expanduser().resolve()
 
     print("Exporting conversations...")
-    ok = run_export(args.days, args.date, output_dir)
+    ok = run_export(args.days, args.date, output_dir, args.markdown_dir)
     if not ok:
         print("Export finished with errors; continuing to build the viewer.")
 

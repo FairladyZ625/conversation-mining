@@ -3,6 +3,7 @@
 export_all.py - Unified AI conversation exporter
 Usage: python3 export_all.py [--date YYYY-MM-DD] [--days N]
 """
+
 import argparse
 import hashlib
 import json
@@ -10,19 +11,27 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(REPO_ROOT))
+SKILL_DIR = Path(__file__).parent
+sys.path.insert(0, str(SKILL_DIR))
 
-DEFAULT_OUTPUT_BASE = REPO_ROOT / "exported_conversations"
-OUTPUT_BASE = DEFAULT_OUTPUT_BASE
+from lib.transcript_export import (  # noqa: E402
+    render_transcript_markdown,
+    sanitize_filename,
+    unique_markdown_path,
+)
+
+CLAUDE_DIR = Path.home() / ".claude"
+OUTPUT_BASE = CLAUDE_DIR / "exported_conversations"
 INDEX_FILE = OUTPUT_BASE / "conversations.json"
+PREFERRED_MARKDOWN_DIR = Path("/Volumes/LIZEYU/Converstions")
+MARKDOWN_DIR = PREFERRED_MARKDOWN_DIR if PREFERRED_MARKDOWN_DIR.parent.exists() else OUTPUT_BASE / "transcripts"
 
 
 def load_index() -> dict:
     if INDEX_FILE.exists():
         try:
-            with open(INDEX_FILE) as f:
-                return json.load(f)
+            with open(INDEX_FILE, encoding="utf-8") as handle:
+                return json.load(handle)
         except Exception:
             pass
     return {"generated_at": "", "conversations": []}
@@ -31,19 +40,26 @@ def load_index() -> dict:
 def save_index(index: dict):
     OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
     index["generated_at"] = datetime.now().isoformat()
-    with open(INDEX_FILE, "w", encoding="utf-8") as f:
-        json.dump(index, f, ensure_ascii=False, indent=2)
+    with open(INDEX_FILE, "w", encoding="utf-8") as handle:
+        json.dump(index, handle, ensure_ascii=False, indent=2)
 
 
 def get_existing_ids(index: dict) -> set:
-    return {c["session_id"] for c in index.get("conversations", [])}
+    return {f"{conversation.get('source')}::{conversation.get('session_id')}" for conversation in index.get("conversations", [])}
+
+
+def _preserve_existing_fields(existing: dict, conversation: dict) -> dict:
+    for key in ("transcript_path", "transcript_rel_path"):
+        if key not in conversation and existing.get(key):
+            conversation[key] = existing[key]
+    return conversation
 
 
 def upsert_conversation(index: dict, conversation: dict):
     conversations = index.setdefault("conversations", [])
-    for i, existing in enumerate(conversations):
+    for index_pos, existing in enumerate(conversations):
         if existing.get("source") == conversation.get("source") and existing.get("session_id") == conversation.get("session_id"):
-            conversations[i] = conversation
+            conversations[index_pos] = _preserve_existing_fields(existing, conversation)
             return
     conversations.append(conversation)
 
@@ -56,103 +72,114 @@ def find_existing_conversation(index: dict, source: str, session_id: str) -> dic
 
 
 def make_conv_id(source: str, date: str, session_id: str) -> str:
-    h = hashlib.md5(session_id.encode()).hexdigest()[:8]
-    return f"{source}-{date.replace('-', '')}-{h}"
+    digest = hashlib.md5(session_id.encode()).hexdigest()[:8]
+    return f"{source}-{date.replace('-', '')}-{digest}"
 
 
-def sanitize_filename(s: str, max_len: int = 60) -> str:
-    if not s:
-        return "untitled"
-    safe = ""
-    for c in s:
-        if c.isalnum() or c in ("-", "_", " ", ".", "，", "。"):
-            safe += c
-        elif c in ("/", "\\", ":", "*", "?", '"', "<", ">", "|", "\n"):
-            safe += "_"
+def _default_markdown_dir() -> Path:
+    if PREFERRED_MARKDOWN_DIR.parent.exists():
+        return PREFERRED_MARKDOWN_DIR
+    return OUTPUT_BASE / "transcripts"
+
+
+def _build_transcript_stem(conversation: dict) -> str:
+    source = str(conversation.get("source", "conv"))
+    if conversation.get("is_subagent"):
+        source += "_subagent"
+    project = str(conversation.get("project", "")).strip("/").split("/")[-1] if conversation.get("project") else ""
+    title = conversation.get("title") or conversation.get("session_id", "")[:12]
+    parts = [source]
+    if project:
+        parts.append(project)
+    parts.append(title)
+    return sanitize_filename("_".join(part for part in parts if part), max_len=100)
+
+
+def materialize_transcripts(index: dict, markdown_dir: Path):
+    markdown_dir.mkdir(parents=True, exist_ok=True)
+    conversations = list(index.get("conversations", []))
+    used_paths: set[str] = set()
+
+    for conversation in sorted(conversations, key=lambda item: (item.get("date", ""), item.get("source", ""), item.get("title", ""))):
+        date_dir = markdown_dir / (conversation.get("date") or "unknown-date")
+        transcript_path = ""
+        existing_path = conversation.get("transcript_path")
+        if existing_path:
+            existing_candidate = Path(existing_path)
+            try:
+                existing_candidate.relative_to(markdown_dir)
+                transcript_path = str(existing_candidate)
+            except Exception:
+                transcript_path = ""
+        if transcript_path:
+            used_paths.add(transcript_path)
+            out_path = Path(transcript_path)
         else:
-            safe += c
-    return safe[:max_len].strip().rstrip(".")
+            out_path = unique_markdown_path(date_dir, _build_transcript_stem(conversation), used_paths)
 
+        content = render_transcript_markdown(conversation, conversations)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as handle:
+            handle.write(content)
 
-def unique_path(out_dir: Path, fname_base: str) -> Path:
-    fname = f"{fname_base}.md"
-    out_path = out_dir / fname
-    counter = 1
-    while out_path.exists():
-        fname = f"{fname_base}_{counter}.md"
-        out_path = out_dir / fname
-        counter += 1
-    return out_path
+        conversation["transcript_path"] = str(out_path)
+        conversation["transcript_rel_path"] = str(out_path.relative_to(markdown_dir))
 
 
 def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
     try:
         from lib.extract_claude import (
-            find_sessions_by_date,
-            extract_conversation,
-            format_conversation,
-            decode_project_name,
             _extract_subagent_summary,
+            decode_project_name,
+            extract_conversation,
+            find_sessions_by_date,
         )
-    except ImportError as e:
-        print(f"  [Claude] Import error: {e}")
+    except ImportError as error:
+        print(f"  [Claude] Import error: {error}")
         return 0
 
-    out_dir = OUTPUT_BASE / date_str
-    out_dir.mkdir(parents=True, exist_ok=True)
     sessions = find_sessions_by_date(date_str)
     exported = 0
 
-    for sess in sorted(sessions, key=lambda x: x.get("first_ts", "")):
-        sid = sess["session_id"]
-        messages = extract_conversation(sess["filepath"], target_date=date_str)
+    for session in sorted(sessions, key=lambda item: item.get("first_ts", "")):
+        session_id = session["session_id"]
+        existing_key = f"claude::{session_id}"
+        if existing_key in existing_ids:
+            pass
+        messages = extract_conversation(session["filepath"], target_date=date_str)
         if not messages:
             continue
 
-        md = format_conversation(messages, sid, sess["project"], sess.get("first_ts", ""))
-        first_user = next((m["text"][:40] for m in messages if m["role"] == "user"), "")
-        first_user_full = next((m["text"] for m in messages if m["role"] == "user"), "")
-        proj_abbr = sess["project"].split("-")[-1][:15] if sess.get("project") else "unknown"
-        fname_base = sanitize_filename(f"claude_{proj_abbr}_{first_user}" if first_user else f"claude_{sid[:8]}")
-        existing = find_existing_conversation(index, "claude", sid)
-        if existing and existing.get("file"):
-            out_path = OUTPUT_BASE / existing["file"]
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            out_path = unique_path(out_dir, fname_base)
-
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(md)
-
-        subagent_summary = _extract_subagent_summary(first_user_full) if sess.get("is_subagent") else ""
-        title = subagent_summary or first_user or sid[:40]
+        first_user = next((message["text"][:40] for message in messages if message["role"] == "user"), "")
+        first_user_full = next((message["text"] for message in messages if message["role"] == "user"), "")
+        subagent_summary = _extract_subagent_summary(first_user_full) if session.get("is_subagent") else ""
+        title = subagent_summary or first_user or session_id[:40]
         upsert_conversation(index, {
-            "id": make_conv_id("claude", date_str, sid),
+            "id": make_conv_id("claude", date_str, session_id),
             "source": "claude",
             "date": date_str,
             "title": title,
-            "project": decode_project_name(sess.get("project", "")),
-            "session_id": sid,
-            "file": f"{date_str}/{out_path.name}",
-            "first_ts": sess.get("first_ts", ""),
-            "is_subagent": bool(sess.get("is_subagent")),
-            "parent_session_id": sess.get("parent_session_id", ""),
-            "launch_prompt": first_user_full if sess.get("is_subagent") else "",
+            "project": decode_project_name(session.get("project", "")),
+            "session_id": session_id,
+            "first_ts": session.get("first_ts", ""),
+            "is_subagent": bool(session.get("is_subagent")),
+            "parent_session_id": session.get("parent_session_id", ""),
+            "launch_prompt": first_user_full if session.get("is_subagent") else "",
             "subagent_summary": subagent_summary,
-            "user_msg_count": sum(1 for m in messages if m["role"] == "user"),
-            "assistant_msg_count": sum(1 for m in messages if m["role"] == "assistant"),
+            "user_msg_count": sum(1 for message in messages if message["role"] == "user"),
+            "assistant_msg_count": sum(1 for message in messages if message["role"] == "assistant"),
             "messages": [
                 {
-                    "role": m["role"],
-                    "text": m["text"],
-                    **({"prompt": m.get("prompt", "")} if m.get("prompt") else {}),
-                    **({"description": m.get("description", "")} if m.get("description") else {}),
-                    **({"tool_use_id": m.get("tool_use_id", "")} if m.get("tool_use_id") else {}),
+                    "role": message["role"],
+                    "text": message["text"],
+                    **({"prompt": message.get("prompt", "")} if message.get("prompt") else {}),
+                    **({"description": message.get("description", "")} if message.get("description") else {}),
+                    **({"tool_use_id": message.get("tool_use_id", "")} if message.get("tool_use_id") else {}),
                 }
-                for m in messages
+                for message in messages
             ],
         })
-        existing_ids.add(sid)
+        existing_ids.add(existing_key)
         exported += 1
         print(f"    ✓ [Claude] {title[:60]}")
 
@@ -161,54 +188,37 @@ def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
 
 def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
     try:
-        from lib.extract_codex import (
-            find_sessions_by_date,
-            extract_conversation,
-            format_conversation,
-            load_thread_titles,
-        )
-    except ImportError as e:
-        print(f"  [Codex] Import error: {e}")
+        from lib.extract_codex import extract_conversation, find_sessions_by_date, load_thread_titles
+    except ImportError as error:
+        print(f"  [Codex] Import error: {error}")
         return 0
 
-    out_dir = OUTPUT_BASE / date_str
-    out_dir.mkdir(parents=True, exist_ok=True)
     titles = load_thread_titles()
     sessions = find_sessions_by_date(date_str)
     exported = 0
 
-    for sid, fpath in sorted(sessions.items()):
-        messages, meta = extract_conversation(fpath)
+    for session_id, filepath in sorted(sessions.items()):
+        existing_key = f"codex::{session_id}"
+        if existing_key in existing_ids:
+            pass
+        messages, meta = extract_conversation(filepath)
         if not messages:
             continue
 
-        title = titles.get(sid, "")
-        md = format_conversation(messages, sid, title, meta)
-        safe_title = sanitize_filename(f"codex_{title}" if title else f"codex_{sid[:12]}")
-        existing = find_existing_conversation(index, "codex", sid)
-        if existing and existing.get("file"):
-            out_path = OUTPUT_BASE / existing["file"]
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            out_path = unique_path(out_dir, safe_title)
-
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(md)
-
-        display_title = title or (messages[0]["text"][:50] if messages else sid[:40])
+        title = titles.get(session_id, "")
+        display_title = title or (messages[0]["text"][:50] if messages else session_id[:40])
         upsert_conversation(index, {
-            "id": make_conv_id("codex", date_str, sid),
+            "id": make_conv_id("codex", date_str, session_id),
             "source": "codex",
             "date": date_str,
             "title": display_title,
             "project": meta.get("cwd", "") if meta else "",
-            "session_id": sid,
-            "file": f"{date_str}/{out_path.name}",
-            "user_msg_count": sum(1 for m in messages if m["role"] == "user"),
-            "assistant_msg_count": sum(1 for m in messages if m["role"] == "assistant"),
-            "messages": [{"role": m["role"], "text": m["text"]} for m in messages],
+            "session_id": session_id,
+            "user_msg_count": sum(1 for message in messages if message["role"] == "user"),
+            "assistant_msg_count": sum(1 for message in messages if message["role"] == "assistant"),
+            "messages": [{"role": message["role"], "text": message["text"]} for message in messages],
         })
-        existing_ids.add(sid)
+        existing_ids.add(existing_key)
         exported += 1
         print(f"    ✓ [Codex] {display_title[:60]}")
 
@@ -218,59 +228,34 @@ def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
 def export_antigravity(date_str: str, existing_ids: set, index: dict) -> int:
     try:
         from lib.extract_antigravity import find_sessions
-    except ImportError as e:
-        print(f"  [AG] Import error: {e}")
+    except ImportError as error:
+        print(f"  [AG] Import error: {error}")
         return 0
 
-    out_dir = OUTPUT_BASE / date_str
-    out_dir.mkdir(parents=True, exist_ok=True)
     sessions = find_sessions(date_str)
     exported = 0
 
-    for sess in sessions:
-        sid = sess["session_id"]
-        messages = sess.get("messages", [])
-        title = sess.get("title", sid[:40])
-        artifacts = sess.get("artifacts", [])
-        brain_dir = sess.get("brain_dir", "")
-
-        lines = [f"# {title}", "", f"- Session ID: `{sid}`", "- 来源: AntiGravity", f"- 日期: {date_str}"]
-        if brain_dir:
-            lines.append(f"- Brain dir: `{brain_dir}`")
-        if artifacts:
-            lines += ["", "## Artifacts", ""]
-            for artifact in artifacts:
-                artifact_title = artifact.get("title") or artifact.get("name") or "artifact"
-                artifact_path = artifact.get("path", "")
-                lines.append(f"- `{artifact.get('rel_path') or artifact.get('name')}`: {artifact_title}")
-                if artifact_path:
-                    lines.append(f"  - path: `{artifact_path}`")
-        lines += ["", "---", ""]
-        for msg in messages:
-            label = "🧑 用户" if msg["role"] == "user" else "🤖 AntiGravity"
-            lines += [f"## {label}", "", msg["text"], ""]
-        md = "\n".join(lines)
-
-        fname_base = sanitize_filename(f"ag_{title[:40]}")
-        out_path = unique_path(out_dir, fname_base)
-
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(md)
-
+    for session in sessions:
+        session_id = session["session_id"]
+        existing_key = f"antigravity::{session_id}"
+        if existing_key in existing_ids:
+            pass
+        messages = session.get("messages", [])
+        title = session.get("title", session_id[:40])
         upsert_conversation(index, {
-            "id": make_conv_id("ag", date_str, sid),
+            "id": make_conv_id("ag", date_str, session_id),
             "source": "antigravity",
             "date": date_str,
             "title": title,
-            "project": sess.get("project", ""),
-            "session_id": sid,
-            "file": f"{date_str}/{out_path.name}",
-            "brain_dir": brain_dir,
-            "artifacts": artifacts,
-            "user_msg_count": sum(1 for m in messages if m["role"] == "user"),
-            "assistant_msg_count": sum(1 for m in messages if m["role"] == "assistant"),
+            "project": session.get("project", ""),
+            "session_id": session_id,
+            "brain_dir": session.get("brain_dir", ""),
+            "artifacts": session.get("artifacts", []),
+            "user_msg_count": sum(1 for message in messages if message["role"] == "user"),
+            "assistant_msg_count": sum(1 for message in messages if message["role"] == "assistant"),
             "messages": messages,
         })
+        existing_ids.add(existing_key)
         exported += 1
         print(f"    ✓ [AG] {title[:60]}")
 
@@ -278,19 +263,18 @@ def export_antigravity(date_str: str, existing_ids: set, index: dict) -> int:
 
 
 def main():
+    global OUTPUT_BASE, INDEX_FILE, MARKDOWN_DIR
     parser = argparse.ArgumentParser(description="Export AI conversations")
     parser.add_argument("--date", help="Date to export (YYYY-MM-DD), default: today")
     parser.add_argument("--days", type=int, default=1, help="Number of past days to export")
-    parser.add_argument(
-        "--output-dir",
-        help=f"Directory for exported markdown/index data (default: {DEFAULT_OUTPUT_BASE})",
-    )
+    parser.add_argument("--output-dir", help=f"Directory for JSON/viewer export data (default: {OUTPUT_BASE})")
+    parser.add_argument("--markdown-dir", help=f"Directory for human-readable markdown transcripts (default: {_default_markdown_dir()})")
     args = parser.parse_args()
 
-    global OUTPUT_BASE, INDEX_FILE
     if args.output_dir:
         OUTPUT_BASE = Path(args.output_dir).expanduser().resolve()
         INDEX_FILE = OUTPUT_BASE / "conversations.json"
+    MARKDOWN_DIR = Path(args.markdown_dir).expanduser() if args.markdown_dir else _default_markdown_dir()
 
     if args.date:
         try:
@@ -301,32 +285,32 @@ def main():
     else:
         start_date = datetime.now()
 
-    dates = [(start_date - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(args.days)]
+    dates = [(start_date - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(args.days)]
 
     print("=" * 50)
-    print("  Conversation Mining Exporter")
+    print("  AI 对话统一导出工具")
     print("=" * 50)
 
     index = load_index()
     existing_ids = get_existing_ids(index)
-    print(f"  Existing conversations: {len(existing_ids)}\n")
+    print(f"  已有 {len(existing_ids)} 个会话记录")
+    print(f"  Markdown transcript dir: {MARKDOWN_DIR}\n")
 
     total = 0
     for index_pos, date_str in enumerate(dates):
         print(f"📅 {date_str}")
         total += export_claude(date_str, existing_ids, index)
         total += export_codex(date_str, existing_ids, index)
-        # AntiGravity history currently comes from one unified local state snapshot,
-        # not per-day archival folders. Export it once per run to avoid repeatedly
-        # rewriting the same sessions across a multi-day backfill.
         if index_pos == 0:
             total += export_antigravity(date_str, existing_ids, index)
 
+    materialize_transcripts(index, MARKDOWN_DIR)
     save_index(index)
     print(f"\n{'=' * 40}")
-    print(f"  Added: {total}")
-    print(f"  Total: {len(index['conversations'])}")
-    print(f"  Index: {INDEX_FILE}")
+    print(f"  新增: {total} 个会话")
+    print(f"  总计: {len(index['conversations'])} 个会话")
+    print(f"  索引: {INDEX_FILE}")
+    print(f"  Markdown: {MARKDOWN_DIR}")
     print(f"{'=' * 40}")
 
 

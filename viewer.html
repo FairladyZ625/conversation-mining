@@ -1077,10 +1077,8 @@
 <script type="application/json" id="conv-index">[]</script>
 <script type="application/json" id="conv-messages">{}</script>
 <script>
-const VIEWER_FILE_PATH = decodeURIComponent(window.location.pathname || '');
-const EXPORT_BASE_PATH = VIEWER_FILE_PATH.replace(/\/index\.html$/i, '');
-const CONVERSATIONS_JSON_PATH = EXPORT_BASE_PATH ? (EXPORT_BASE_PATH + '/conversations.json') : 'conversations.json';
-const DATA_PATH = 'conversations.json';
+const DATA_PATH = 'file:///Users/lizeyu/.claude/exported_conversations/conversations.json';
+const EXPORT_BASE_PATH = '/Users/lizeyu/.claude/exported_conversations';
 const THEME_STORAGE_KEY = 'conversation-mining-theme';
 const READING_MODE_STORAGE_KEY = 'conversation-mining-reading-mode';
 const CURATION_STORAGE_KEY = 'conversation-mining-curation-v1';
@@ -1133,9 +1131,9 @@ function showError(err) {
     '<h3>Could not load conversations</h3>' +
     '<p>' + escapeHtml(err.message) + '</p>' +
     '<p>If you see a CORS/security error, open with:</p>' +
-    '<code>open -a "Google Chrome" --args --allow-file-access-from-files ./exported_conversations/index.html</code>' +
+    '<code>open -a "Google Chrome" --args --allow-file-access-from-files ~/.claude/skills/conversation-mining/viewer.html</code>' +
     '<p style="margin-top:8px">Or use Safari (local file access allowed by default).</p>' +
-    '<p>Expected file:<br><code>' + escapeHtml(CONVERSATIONS_JSON_PATH) + '</code></p>' +
+    '<p>Expected file:<br><code>/Users/lizeyu/.claude/exported_conversations/conversations.json</code></p>' +
     '</div>';
 }
 
@@ -1639,8 +1637,10 @@ function fallbackCopyText(text) {
 }
 
 function getConversationFilePath(conv) {
-  if (!conv || !conv.file) return '';
-  return EXPORT_BASE_PATH + '/' + String(conv.file).replace(/^\/+/, '');
+  if (!conv) return '';
+  if (conv.transcript_path) return String(conv.transcript_path);
+  if (conv.file) return EXPORT_BASE_PATH + '/' + String(conv.file).replace(/^\/+/, '');
+  return '';
 }
 
 function getConversationViewerLink(conv) {
@@ -1655,7 +1655,7 @@ function buildConversationRef(conv) {
     '- Source: ' + (conv.source || ''),
     '- Viewer: ' + getConversationViewerLink(conv),
     '- Transcript: ' + getConversationFilePath(conv),
-    '- Search fallback: ' + CONVERSATIONS_JSON_PATH,
+    '- Search fallback: /Users/lizeyu/.claude/exported_conversations/conversations.json',
   ].join('\n');
 }
 
@@ -1668,7 +1668,7 @@ function buildConversationPrompt(conv) {
     '- viewer deep link: ' + getConversationViewerLink(conv),
     '- transcript markdown: ' + getConversationFilePath(conv),
     '',
-    '如果无法直接打开 viewer deep link，就读取 transcript markdown；如果 transcript 不存在，再到 ' + CONVERSATIONS_JSON_PATH + ' 里按 conversation id 搜索。',
+    '如果无法直接打开 viewer deep link，就读取 transcript markdown；如果 transcript 不存在，再到 /Users/lizeyu/.claude/exported_conversations/conversations.json 里按 conversation id 搜索。',
   ].join('\n');
 }
 
@@ -2554,6 +2554,7 @@ function selectConversation(id) {
     '</div></div>' +
     '<div id="conv-header-actions">' +
     subagentBtnHtml +
+    (transcriptPath ? '<button class="header-action-btn" id="open-markdown-btn" title="' + escapeAttr(transcriptPath) + '">Open Markdown</button>' : '') +
     '<button class="header-action-btn" id="copy-ref-btn" title="' + escapeAttr(transcriptPath) + '">Copy ref</button>' +
     '<button class="header-action-btn" id="copy-prompt-btn" title="' + escapeAttr(viewerLink) + '">Copy prompt</button>' +
     '</div></div>' +
@@ -2566,6 +2567,12 @@ function selectConversation(id) {
   if (copyRefBtn) {
     copyRefBtn.addEventListener('click', function() {
       copyText(buildConversationRef(conv), copyRefBtn, 'Copy ref');
+    });
+  }
+  var openMarkdownBtn = document.getElementById('open-markdown-btn');
+  if (openMarkdownBtn) {
+    openMarkdownBtn.addEventListener('click', function() {
+      window.open(toFileUrl(transcriptPath), '_blank');
     });
   }
   var copyPromptBtn = document.getElementById('copy-prompt-btn');
