@@ -15,7 +15,11 @@ It can be used in two ways:
 - as a standalone local script/tool
 - as an installable skill via [SKILL.md](./SKILL.md)
 
-If you want another AI to install it for you, use [INSTALL_WITH_AI.md](./INSTALL_WITH_AI.md).
+## Copy This To Your AI
+
+```text
+Install and learn `conversation-mining` from https://github.com/FairladyZ625/conversation-mining . Read the repository README and SKILL.md, set it up locally as both a skill and a CLI if supported, then verify with `conversation-mining --no-open --days 1`.
+```
 
 ## What It Supports
 
@@ -72,16 +76,6 @@ With `pipx`:
 pipx install .
 conversation-mining --date 2026-03-19
 ```
-
-## Install Through Another AI
-
-If you want Claude Code, Codex, or another coding agent to install it for you, copy one of the ready-made prompts from [INSTALL_WITH_AI.md](./INSTALL_WITH_AI.md).
-
-That file includes:
-
-- a prompt for Claude Code / Codex
-- a prompt for skill-capable agents
-- a generic terminal-agent install prompt
 
 ## Use As a Skill
 

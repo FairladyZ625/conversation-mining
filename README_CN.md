@@ -15,7 +15,11 @@
 - 独立脚本 / 本地工具
 - 可安装 skill，入口见 [SKILL.md](./SKILL.md)
 
-如果你想让另一个 AI 帮你安装，直接看 [INSTALL_WITH_AI.md](./INSTALL_WITH_AI.md)。
+## 复制给你的 AI
+
+```text
+请从 https://github.com/FairladyZ625/conversation-mining 安装并学习 `conversation-mining`。阅读仓库里的 README 和 SKILL.md，按仓库说明在本地安装；如果支持的话，同时把它装成 skill 和 CLI。安装后用 `conversation-mining --no-open --days 1` 验证。
+```
 
 ## 当前支持
 
@@ -73,16 +77,6 @@ python3 -m conversation_mining --days 7
 pipx install .
 conversation-mining --date 2026-03-19
 ```
-
-## 通过另一个 AI 安装
-
-如果你想直接把一段话发给 Claude Code、Codex 或其他 coding agent，让对方自动帮你安装，就直接复制 [INSTALL_WITH_AI.md](./INSTALL_WITH_AI.md) 里的 prompt。
-
-里面已经准备好了：
-
-- 给 Claude Code / Codex 的安装提示词
-- 给支持 skill 安装的 agent 的提示词
-- 通用 terminal agent 安装提示词
 
 ## 作为 Skill 使用
 
