@@ -18,7 +18,7 @@
 ## 复制给你的 AI
 
 ```text
-请从 https://github.com/FairladyZ625/conversation-mining 安装并学习 `conversation-mining`。阅读仓库里的 README 和 SKILL.md，按仓库说明在本地安装；如果支持的话，同时把它装成 skill 和 CLI。安装后用 `conversation-mining --no-open --days 1` 验证。
+请从 https://github.com/FairladyZ625/conversation-mining 安装并学习 `conversation-mining`。阅读仓库里的 README.md、SKILL.md 和 AI_INSTALL.md，按仓库说明在本地安装；如果支持的话，同时把它装成 skill 和 CLI。安装后用 `conversation-mining --no-open --days 1` 验证。
 ```
 
 ## 当前支持

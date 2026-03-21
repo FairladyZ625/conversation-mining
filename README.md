@@ -18,7 +18,7 @@ It can be used in two ways:
 ## Copy This To Your AI
 
 ```text
-Install and learn `conversation-mining` from https://github.com/FairladyZ625/conversation-mining . Read the repository README and SKILL.md, set it up locally as both a skill and a CLI if supported, then verify with `conversation-mining --no-open --days 1`.
+Install and learn `conversation-mining` from https://github.com/FairladyZ625/conversation-mining . Read README.md, SKILL.md, and AI_INSTALL.md, then install it locally as both a skill and a CLI if supported, and verify with `conversation-mining --no-open --days 1`.
 ```
 
 ## What It Supports
