@@ -7,6 +7,8 @@ KEYWORD_RE = re.compile(r"(结论|建议|下一步|计划|风险|原因|判断|�
 ABSOLUTE_PATH_RE = re.compile(r"/Users/[^\s<>)\]\"'`]+")
 RELATIVE_PATH_RE = re.compile(r"(?:docs|apps|packages|dashboard|extensions|lib|src)/[\w./-]+\.(?:py|html|md|tsx?|jsx?|json|sh|css|scss|toml|ya?ml)\b")
 BACKTICK_FILE_RE = re.compile(r"`([^`\n]+?\.(?:py|html|md|tsx?|jsx?|json|sh|css|scss|toml|ya?ml))`")
+URL_RE = re.compile(r"https?://\S+")
+HOME_PATH_RE = re.compile(r"/Users/[^\s<>)\]\"'`]+")
 
 
 def sanitize_filename(value: str, max_len: int = 80) -> str:
@@ -59,6 +61,18 @@ def truncate_text(text: str, max_chars: int) -> str:
     if len(clean) <= max_chars:
         return clean
     return clean[: max_chars - 1].rstrip() + "…"
+
+
+def humanize_title_fragment(text: str, max_chars: int = 52) -> str:
+    cleaned = strip_markdown_for_text(text)
+    cleaned = URL_RE.sub("", cleaned)
+    cleaned = HOME_PATH_RE.sub("", cleaned)
+    cleaned = re.sub(r"\b(file|path|workspace|session id|viewer id)\b[:：]?\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"[\[\](){}]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -_:,.，。")
+    if not cleaned:
+        return ""
+    return truncate_text(cleaned, max_chars)
 
 
 def _normalize_path_candidate(path: str) -> str:

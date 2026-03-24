@@ -339,6 +339,53 @@
     font-weight: 600;
     color: var(--text);
     margin-bottom: 2px;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+  .conv-header-main {
+    min-width: 0;
+    flex: 1;
+  }
+  .conv-title-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    max-height: 132px;
+    overflow: hidden;
+  }
+  .conv-title-preview {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+  .conv-title-full {
+    display: none;
+    max-height: 84px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .conv-title-shell.expanded .conv-title-preview {
+    display: none;
+  }
+  .conv-title-shell.expanded .conv-title-full {
+    display: block;
+  }
+  .conv-title-toggle {
+    align-self: flex-start;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .conv-title-toggle:hover {
+    background: var(--hover);
+    color: var(--text);
   }
   #conv-header-top {
     display: flex;
@@ -1781,6 +1828,21 @@ function truncateText(text, maxChars) {
   return clean.slice(0, Math.max(0, maxChars - 1)).trimEnd() + '…';
 }
 
+function normalizeInlineText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function buildHeaderTitlePayload(title) {
+  var clean = normalizeInlineText(title);
+  if (!clean) return { preview: 'Untitled', full: '', expandable: false };
+  if (clean.length <= 220) return { preview: clean, full: clean, expandable: false };
+  return {
+    preview: clean.slice(0, 220).trimEnd() + '…',
+    full: clean,
+    expandable: true,
+  };
+}
+
 function findLastRoleIndex(messages, role) {
   for (var i = messages.length - 1; i >= 0; i--) {
     if ((messages[i].role || '').toLowerCase() === role) return i;
@@ -2392,6 +2454,7 @@ function selectConversation(id) {
 
   var right = document.getElementById('right');
   var title = conv.title || conv.name || 'Untitled';
+  var titlePayload = buildHeaderTitlePayload(title);
   var messages = allMessages[id] || conv.messages || [];
   var analysis = analyzeConversation(messages);
   var summary = buildQuickSummary(messages, analysis);
@@ -2545,7 +2608,11 @@ function selectConversation(id) {
   right.innerHTML =
     '<div id="conv-header">' +
     '<div id="conv-header-top">' +
-    '<div><h2>' + escapeHtml(title) + '</h2>' +
+    '<div class="conv-header-main"><div class="conv-title-shell' + (titlePayload.expandable ? '' : ' expanded') + '" id="conv-title-shell">' +
+    '<h2 class="conv-title-preview" title="' + escapeAttr(titlePayload.full) + '">' + escapeHtml(titlePayload.preview) + '</h2>' +
+    '<div class="conv-title-full"><h2>' + escapeHtml(titlePayload.full) + '</h2></div>' +
+    (titlePayload.expandable ? '<button class="conv-title-toggle" id="conv-title-toggle">展开标题</button>' : '') +
+    '</div>' +
     '<div id="conv-header-meta">' + badgeFor(conv.source) +
     '&nbsp; ' + msgCount + ' messages' +
     (dateLabel ? ' &nbsp;&middot;&nbsp; ' + dateLabel : '') +
@@ -2573,6 +2640,14 @@ function selectConversation(id) {
   if (openMarkdownBtn) {
     openMarkdownBtn.addEventListener('click', function() {
       window.open(toFileUrl(transcriptPath), '_blank');
+    });
+  }
+  var convTitleToggle = document.getElementById('conv-title-toggle');
+  var convTitleShell = document.getElementById('conv-title-shell');
+  if (convTitleToggle && convTitleShell) {
+    convTitleToggle.addEventListener('click', function() {
+      var expanded = convTitleShell.classList.toggle('expanded');
+      convTitleToggle.textContent = expanded ? '收起标题' : '展开标题';
     });
   }
   var copyPromptBtn = document.getElementById('copy-prompt-btn');

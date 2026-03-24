@@ -15,6 +15,7 @@ SKILL_DIR = Path(__file__).parent
 sys.path.insert(0, str(SKILL_DIR))
 
 from lib.transcript_export import (  # noqa: E402
+    humanize_title_fragment,
     render_transcript_markdown,
     sanitize_filename,
     unique_markdown_path,
@@ -87,7 +88,7 @@ def _build_transcript_stem(conversation: dict) -> str:
     if conversation.get("is_subagent"):
         source += "_subagent"
     project = str(conversation.get("project", "")).strip("/").split("/")[-1] if conversation.get("project") else ""
-    title = conversation.get("title") or conversation.get("session_id", "")[:12]
+    title = humanize_title_fragment(conversation.get("title") or "", max_chars=52) or conversation.get("session_id", "")[:12]
     parts = [source]
     if project:
         parts.append(project)
@@ -108,7 +109,9 @@ def materialize_transcripts(index: dict, markdown_dir: Path):
             existing_candidate = Path(existing_path)
             try:
                 existing_candidate.relative_to(markdown_dir)
-                transcript_path = str(existing_candidate)
+                existing_name = existing_candidate.name
+                if "_Users_" not in existing_name and "https___" not in existing_name and len(existing_name) <= 120:
+                    transcript_path = str(existing_candidate)
             except Exception:
                 transcript_path = ""
         if transcript_path:
