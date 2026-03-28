@@ -160,6 +160,27 @@ def prompts_match(left: str, right: str) -> bool:
     return left_short == right_short or left_short in right_short or right_short in left_short
 
 
+def build_search_entry(conversation: dict) -> dict:
+    """从 conversation 中提取搜索索引条目，用于轻量快速搜索。"""
+    messages = conversation.get("messages", [])
+    # 提取关键词：title 分词 + signals + files
+    title = strip_markdown_for_text(conversation.get("title", ""))
+    title_words = [w for w in re.split(r"[\s/_\-.,:;!?|<>{}()\[\]]+", title) if len(w) > 2][:10]
+    signals = extract_signal_mentions(messages, limit=4)
+    files = extract_file_mentions(messages, limit=4)
+    commands = extract_command_mentions(messages, limit=3)
+    keywords = list(dict.fromkeys(title_words + signals + files + commands))[:15]
+    return {
+        "id": conversation.get("id", ""),
+        "source": conversation.get("source", ""),
+        "date": conversation.get("date", ""),
+        "session_id": conversation.get("session_id", ""),
+        "title": title[:120],
+        "keywords": keywords,
+        "transcript_path": conversation.get("transcript_path", ""),
+    }
+
+
 def is_subagent_conversation(conversation: dict) -> bool:
     if conversation.get("is_subagent"):
         return True

@@ -15,6 +15,7 @@ SKILL_DIR = Path(__file__).parent
 sys.path.insert(0, str(SKILL_DIR))
 
 from lib.transcript_export import (  # noqa: E402
+    build_search_entry,
     humanize_title_fragment,
     render_transcript_markdown,
     sanitize_filename,
@@ -56,13 +57,31 @@ def _preserve_existing_fields(existing: dict, conversation: dict) -> dict:
     return conversation
 
 
-def upsert_conversation(index: dict, conversation: dict):
+def _content_hash(conversation: dict) -> str:
+    """基于 messages 生成内容哈希，用于判断会话是否有变化"""
+    msgs = conversation.get("messages", [])
+    if not msgs:
+        return ""
+    last_text = msgs[-1].get("text", "")[:200] if msgs else ""
+    raw = f"{len(msgs)}:{last_text}"
+    return hashlib.md5(raw.encode()).hexdigest()[:12]
+
+
+def upsert_conversation(index: dict, conversation: dict) -> bool:
+    """插入或更新会话。返回 True 表示内容有变化（需要重新 materialize），False 表示未变化。"""
     conversations = index.setdefault("conversations", [])
+    new_hash = _content_hash(conversation)
+    conversation["_content_hash"] = new_hash
     for index_pos, existing in enumerate(conversations):
         if existing.get("source") == conversation.get("source") and existing.get("session_id") == conversation.get("session_id"):
+            old_hash = existing.get("_content_hash", "")
+            is_dirty = old_hash != new_hash
+            conversation["_dirty"] = is_dirty
             conversations[index_pos] = _preserve_existing_fields(existing, conversation)
-            return
+            return is_dirty
+    conversation["_dirty"] = True
     conversations.append(conversation)
+    return True
 
 
 def find_existing_conversation(index: dict, source: str, session_id: str) -> dict | None:
@@ -96,15 +115,29 @@ def _build_transcript_stem(conversation: dict) -> str:
     return sanitize_filename("_".join(part for part in parts if part), max_len=100)
 
 
-def materialize_transcripts(index: dict, markdown_dir: Path):
+def materialize_transcripts(index: dict, markdown_dir: Path, dirty_ids: set[str] | None = None):
+    """Materialize transcript markdown files.
+
+    Args:
+        dirty_ids: 如果非 None，只重写这些 id 对应的 transcript。
+                   未变化的会话直接复用已有 transcript_path。
+    """
     markdown_dir.mkdir(parents=True, exist_ok=True)
     conversations = list(index.get("conversations", []))
     used_paths: set[str] = set()
 
     for conversation in sorted(conversations, key=lambda item: (item.get("date", ""), item.get("source", ""), item.get("title", ""))):
+        conv_id = conversation.get("id", "")
+        is_dirty = dirty_ids is None or conv_id in dirty_ids
+
+        # 已有 transcript_path 且未变化 → 直接复用
+        existing_path = conversation.get("transcript_path")
+        if existing_path and Path(existing_path).exists() and not is_dirty:
+            used_paths.add(str(existing_path))
+            continue
+
         date_dir = markdown_dir / (conversation.get("date") or "unknown-date")
         transcript_path = ""
-        existing_path = conversation.get("transcript_path")
         if existing_path:
             existing_candidate = Path(existing_path)
             try:
@@ -148,7 +181,7 @@ def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
         session_id = session["session_id"]
         existing_key = f"claude::{session_id}"
         if existing_key in existing_ids:
-            pass
+            continue
         messages = extract_conversation(session["filepath"], target_date=date_str)
         if not messages:
             continue
@@ -203,7 +236,7 @@ def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
     for session_id, filepath in sorted(sessions.items()):
         existing_key = f"codex::{session_id}"
         if existing_key in existing_ids:
-            pass
+            continue
         messages, meta = extract_conversation(filepath)
         if not messages:
             continue
@@ -242,7 +275,7 @@ def export_antigravity(date_str: str, existing_ids: set, index: dict) -> int:
         session_id = session["session_id"]
         existing_key = f"antigravity::{session_id}"
         if existing_key in existing_ids:
-            pass
+            continue
         messages = session.get("messages", [])
         title = session.get("title", session_id[:40])
         upsert_conversation(index, {
@@ -265,6 +298,26 @@ def export_antigravity(date_str: str, existing_ids: set, index: dict) -> int:
     return exported
 
 
+def _build_search_index(index: dict):
+    """导出时生成轻量搜索索引 search_index.json"""
+    search_file = OUTPUT_BASE / "search_index.json"
+    conversations = index.get("conversations", [])
+    entries = []
+    for conv in conversations:
+        entry = build_search_entry(conv)
+        if entry:
+            entries.append(entry)
+    search_data = {
+        "version": 1,
+        "generated_at": datetime.now().isoformat(),
+        "count": len(entries),
+        "entries": entries,
+    }
+    with open(search_file, "w", encoding="utf-8") as f:
+        json.dump(search_data, f, ensure_ascii=False, indent=2)
+    print(f"  搜索索引: {search_file} ({len(entries)} entries)")
+
+
 def main():
     global OUTPUT_BASE, INDEX_FILE, MARKDOWN_DIR
     parser = argparse.ArgumentParser(description="Export AI conversations")
@@ -272,6 +325,7 @@ def main():
     parser.add_argument("--days", type=int, default=1, help="Number of past days to export")
     parser.add_argument("--output-dir", help=f"Directory for JSON/viewer export data (default: {OUTPUT_BASE})")
     parser.add_argument("--markdown-dir", help=f"Directory for human-readable markdown transcripts (default: {_default_markdown_dir()})")
+    parser.add_argument("--clean", action="store_true", help="Remove orphaned transcript files not in conversations.json")
     args = parser.parse_args()
 
     if args.output_dir:
@@ -299,6 +353,7 @@ def main():
     print(f"  已有 {len(existing_ids)} 个会话记录")
     print(f"  Markdown transcript dir: {MARKDOWN_DIR}\n")
 
+    dirty_ids: set[str] = set()
     total = 0
     for index_pos, date_str in enumerate(dates):
         print(f"📅 {date_str}")
@@ -307,8 +362,29 @@ def main():
         if index_pos == 0:
             total += export_antigravity(date_str, existing_ids, index)
 
-    materialize_transcripts(index, MARKDOWN_DIR)
+    # Collect dirty IDs (conversations that changed or are new)
+    for conv in index.get("conversations", []):
+        if conv.get("_dirty"):
+            dirty_ids.add(conv.get("id", ""))
+            del conv["_dirty"]
+
+    # --clean: remove orphaned transcript files
+    if args.clean:
+        valid_paths = {c.get("transcript_path") for c in index.get("conversations", []) if c.get("transcript_path")}
+        removed = 0
+        for md_file in MARKDOWN_DIR.rglob("*.md"):
+            if str(md_file) not in valid_paths:
+                md_file.unlink()
+                removed += 1
+                print(f"  清理孤立文件: {md_file.name}")
+        print(f"  清理完成: 删除 {removed} 个孤立文件\n")
+
+    materialize_transcripts(index, MARKDOWN_DIR, dirty_ids or None)
     save_index(index)
+
+    # Generate search index
+    _build_search_index(index)
+
     print(f"\n{'=' * 40}")
     print(f"  新增: {total} 个会话")
     print(f"  总计: {len(index['conversations'])} 个会话")

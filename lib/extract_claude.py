@@ -62,16 +62,14 @@ def find_sessions_by_date(target_date: str):
             project = jsonl_file.parent.name
             parent_session_id = ""
 
-        # 快速检查：文件修改时间是否在目标日期附近（±1天容差）
+        # 检查文件修改时间：如果 mtime 在目标日期当天，视为匹配
+        # 这解决了"旧会话今天继续，但消息时间戳被压缩"的问题
         mtime = os.path.getmtime(jsonl_file)
         mtime_dt = datetime.fromtimestamp(mtime)
-        if abs((mtime_dt - dt).days) > 30:
-            # 如果文件修改时间离目标日期超过30天，跳过
-            # 但不能完全依赖 mtime，因为文件可能在之后被修改
-            pass
+        mtime_matched = mtime_dt.date() == dt.date()
 
         # 读取文件，检查是否有目标日期的消息
-        has_target_date = False
+        has_target_date = mtime_matched
         first_ts = ""
         try:
             with open(jsonl_file) as f:
