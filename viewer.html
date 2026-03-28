@@ -1124,7 +1124,12 @@
 <script type="application/json" id="conv-index">[]</script>
 <script type="application/json" id="conv-messages">{}</script>
 <script>
-const DATA_PATH = 'file:///Users/lizeyu/.claude/exported_conversations/conversations.json';
+const DATA_PATH = (function() {
+  if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+    return './conversations.json';
+  }
+  return 'file:///Users/lizeyu/.claude/exported_conversations/conversations.json';
+})();
 const EXPORT_BASE_PATH = '/Users/lizeyu/.claude/exported_conversations';
 const THEME_STORAGE_KEY = 'conversation-mining-theme';
 const READING_MODE_STORAGE_KEY = 'conversation-mining-reading-mode';

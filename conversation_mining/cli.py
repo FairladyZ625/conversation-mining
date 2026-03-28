@@ -17,6 +17,11 @@ VIEWER_TEMPLATE = PACKAGE_ROOT / "viewer.html"
 DEFAULT_OUTPUT_BASE = REPO_ROOT / "exported_conversations"
 
 
+def _json_for_html_script(value) -> str:
+    text = json.dumps(value, ensure_ascii=False)
+    return text.replace("</", "<\\/")
+
+
 def run_export(days: int, date: str | None, output_dir: Path, markdown_dir: str | None) -> bool:
     cmd = [sys.executable, str(EXPORT_ALL), "--output-dir", str(output_dir)]
     if date:
@@ -53,11 +58,11 @@ def build_html(output_dir: Path) -> bool:
 
     html = html.replace(
         '<script type="application/json" id="conv-index">[]</script>',
-        f'<script type="application/json" id="conv-index">{json.dumps(index, ensure_ascii=False)}</script>',
+        f'<script type="application/json" id="conv-index">{_json_for_html_script(index)}</script>',
     )
     html = html.replace(
         '<script type="application/json" id="conv-messages">{}</script>',
-        f'<script type="application/json" id="conv-messages">{json.dumps(messages_map, ensure_ascii=False)}</script>',
+        f'<script type="application/json" id="conv-messages">{_json_for_html_script(messages_map)}</script>',
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)

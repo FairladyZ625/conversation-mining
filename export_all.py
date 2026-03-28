@@ -7,6 +7,7 @@ Usage: python3 export_all.py [--date YYYY-MM-DD] [--days N]
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -27,6 +28,9 @@ OUTPUT_BASE = CLAUDE_DIR / "exported_conversations"
 INDEX_FILE = OUTPUT_BASE / "conversations.json"
 PREFERRED_MARKDOWN_DIR = Path("/Volumes/LIZEYU/Converstions")
 MARKDOWN_DIR = PREFERRED_MARKDOWN_DIR if PREFERRED_MARKDOWN_DIR.parent.exists() else OUTPUT_BASE / "transcripts"
+
+
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
 def load_index() -> dict:
@@ -57,6 +61,68 @@ def _preserve_existing_fields(existing: dict, conversation: dict) -> dict:
     return conversation
 
 
+def _clean_metadata_text(value) -> str:
+    text = str(value or "")
+    text = _CONTROL_CHAR_RE.sub("", text)
+    return text.strip()
+
+
+def _normalize_project_metadata(value) -> str:
+    text = _clean_metadata_text(value)
+    if not text:
+        return ""
+    text = text.replace("file://", "")
+    project_match = re.search(r"(/Users/[^/\s]+/Projects/[^/\s)]+)", text)
+    if project_match:
+        return project_match.group(1)
+    return text
+
+
+def _sanitize_conversation_metadata(conversation: dict) -> dict:
+    cleaned = dict(conversation)
+    for key in (
+        "id",
+        "source",
+        "date",
+        "title",
+        "project",
+        "session_id",
+        "file",
+        "first_ts",
+        "parent_session_id",
+        "launch_prompt",
+        "subagent_summary",
+        "brain_dir",
+        "transcript_path",
+        "transcript_rel_path",
+    ):
+        if key in cleaned:
+            if key == "project":
+                cleaned[key] = _normalize_project_metadata(cleaned.get(key))
+            else:
+                cleaned[key] = _clean_metadata_text(cleaned.get(key))
+    artifacts = []
+    for artifact in cleaned.get("artifacts", []) or []:
+        if not isinstance(artifact, dict):
+            continue
+        artifact_copy = dict(artifact)
+        for field in ("name", "title", "path", "rel_path", "artifact_type", "updated_at"):
+            if field in artifact_copy:
+                artifact_copy[field] = _clean_metadata_text(artifact_copy.get(field))
+        artifacts.append(artifact_copy)
+    if "artifacts" in cleaned:
+        cleaned["artifacts"] = artifacts
+    return cleaned
+
+
+def _sanitize_index_metadata(index: dict) -> None:
+    index["conversations"] = [
+        _sanitize_conversation_metadata(conversation)
+        for conversation in index.get("conversations", [])
+        if isinstance(conversation, dict)
+    ]
+
+
 def _content_hash(conversation: dict) -> str:
     """基于 messages 生成内容哈希，用于判断会话是否有变化"""
     msgs = conversation.get("messages", [])
@@ -70,6 +136,7 @@ def _content_hash(conversation: dict) -> str:
 def upsert_conversation(index: dict, conversation: dict) -> bool:
     """插入或更新会话。返回 True 表示内容有变化（需要重新 materialize），False 表示未变化。"""
     conversations = index.setdefault("conversations", [])
+    conversation = _sanitize_conversation_metadata(conversation)
     new_hash = _content_hash(conversation)
     conversation["_content_hash"] = new_hash
     for index_pos, existing in enumerate(conversations):
@@ -367,6 +434,8 @@ def main():
         if conv.get("_dirty"):
             dirty_ids.add(conv.get("id", ""))
             del conv["_dirty"]
+
+    _sanitize_index_metadata(index)
 
     # --clean: remove orphaned transcript files
     if args.clean:
