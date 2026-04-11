@@ -19,6 +19,54 @@ HISTORY_FILE = CODEX_DIR / "history.jsonl"
 SESSION_INDEX = CODEX_DIR / "session_index.jsonl"
 
 
+def load_subagent_info():
+    """Load sub-agent metadata from SQLite:
+    - child_ids: thread IDs that appear as children in spawn edges
+    - parent_map: child_id -> parent_id
+    """
+    child_ids = set()
+    parent_map = {}
+    if not STATE_DB.exists():
+        return child_ids, parent_map
+    try:
+        conn = sqlite3.connect(str(STATE_DB))
+        cur = conn.execute("SELECT parent_thread_id, child_thread_id FROM thread_spawn_edges")
+        for parent_id, child_id in cur:
+            child_ids.add(child_id)
+            parent_map[child_id] = parent_id
+        conn.close()
+    except Exception:
+        pass
+    return child_ids, parent_map
+
+
+def is_likely_subagent(first_user_text: str) -> bool:
+    """Heuristic: detect machine-generated sub-agent prompts.
+    Indicators: English-only, short, imperative style, ACK patterns.
+    """
+    import re
+    text = first_user_text.strip()
+    if not text:
+        return True  # Empty prompt = likely sub-agent
+    # Contains Chinese = real user
+    if re.search(r'[\u4e00-\u9fff]', text):
+        return False
+    # ACK/heartbeat patterns
+    if re.match(r'^(Reply (with exactly|exactly)|INPUT_ACK|CODEX_OK)', text, re.IGNORECASE):
+        return True
+    # English-only, short imperative (< 300 chars) = likely sub-agent task dispatch
+    if len(text) < 300:
+        return True
+    # Long English-only prompts that start with imperatives = likely sub-agent research tasks
+    imperative_starts = ('Investigate', 'Inspect', 'Review', 'Analyze', 'Read', 'Check',
+                         'Audit', 'Search', 'Find', 'Update', 'Create', 'Write', 'Build',
+                         'Refactor', 'Optimize', 'Test', 'Fix', 'Implement', 'Compare',
+                         'Summarize', 'Describe', 'Evaluate', 'Explore')
+    if any(text.startswith(kw) for kw in imperative_starts):
+        return True
+    return False
+
+
 def load_thread_titles():
     """从 session_index.jsonl 和 SQLite 加载会话标题"""
     titles = {}

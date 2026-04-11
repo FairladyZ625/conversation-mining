@@ -204,6 +204,9 @@ def materialize_transcripts(index: dict, markdown_dir: Path, dirty_ids: set[str]
             continue
 
         date_dir = markdown_dir / (conversation.get("date") or "unknown-date")
+        # Sub-agents go into a separate subdirectory
+        if conversation.get("is_subagent"):
+            date_dir = date_dir / "_subagents"
         transcript_path = ""
         if existing_path:
             existing_candidate = Path(existing_path)
@@ -291,12 +294,13 @@ def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
 
 def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
     try:
-        from lib.extract_codex import extract_conversation, find_sessions_by_date, load_thread_titles
+        from lib.extract_codex import extract_conversation, find_sessions_by_date, load_thread_titles, load_subagent_info
     except ImportError as error:
         print(f"  [Codex] Import error: {error}")
         return 0
 
     titles = load_thread_titles()
+    child_ids, parent_map = load_subagent_info()
     sessions = find_sessions_by_date(date_str)
     exported = 0
 
@@ -308,6 +312,12 @@ def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
         if not messages:
             continue
 
+        # Determine if this is a sub-agent conversation
+        first_user = next((m["text"] for m in messages if m.get("role") == "user"), "")
+        from lib.extract_codex import is_likely_subagent
+        is_subagent = session_id in child_ids or is_likely_subagent(first_user)
+        parent_session_id = parent_map.get(session_id, "")
+
         title = titles.get(session_id, "")
         display_title = title or (messages[0]["text"][:50] if messages else session_id[:40])
         upsert_conversation(index, {
@@ -317,13 +327,16 @@ def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
             "title": display_title,
             "project": meta.get("cwd", "") if meta else "",
             "session_id": session_id,
+            "is_subagent": is_subagent,
+            "parent_session_id": parent_session_id,
             "user_msg_count": sum(1 for message in messages if message["role"] == "user"),
             "assistant_msg_count": sum(1 for message in messages if message["role"] == "assistant"),
             "messages": [{"role": message["role"], "text": message["text"]} for message in messages],
         })
         existing_ids.add(existing_key)
         exported += 1
-        print(f"    ✓ [Codex] {display_title[:60]}")
+        label = " [sub-agent]" if is_subagent else ""
+        print(f"    ✓ [Codex]{label} {display_title[:60]}")
 
     return exported
 
@@ -363,6 +376,36 @@ def export_antigravity(date_str: str, existing_ids: set, index: dict) -> int:
         print(f"    ✓ [AG] {title[:60]}")
 
     return exported
+
+
+def _backfill_codex_subagent(index: dict):
+    """Backfill is_subagent for existing Codex conversations using SQLite metadata + content heuristic."""
+    codex_convs = [c for c in index.get("conversations", []) if c.get("source") == "codex"]
+    needs_backfill = [c for c in codex_convs if "is_subagent" not in c]
+    if not needs_backfill:
+        return
+    try:
+        from lib.extract_codex import load_subagent_info, is_likely_subagent
+        child_ids, parent_map = load_subagent_info()
+    except Exception:
+        return
+    backfilled = 0
+    for conv in needs_backfill:
+        sid = conv.get("session_id", "")
+        first_user = ""
+        msgs = conv.get("messages", [])
+        for m in msgs:
+            if m.get("role") == "user":
+                first_user = m.get("text", "")
+                break
+        is_sub = sid in child_ids or is_likely_subagent(first_user)
+        conv["is_subagent"] = is_sub
+        if sid in parent_map:
+            conv["parent_session_id"] = parent_map[sid]
+        if is_sub:
+            backfilled += 1
+    if backfilled:
+        print(f"  回填 Codex 子代理标记: {backfilled} 条")
 
 
 def _build_search_index(index: dict):
@@ -434,6 +477,9 @@ def main():
         if conv.get("_dirty"):
             dirty_ids.add(conv.get("id", ""))
             del conv["_dirty"]
+
+    # Backfill is_subagent for existing Codex conversations missing the field
+    _backfill_codex_subagent(index)
 
     _sanitize_index_metadata(index)
 
