@@ -47,23 +47,17 @@ def build_html(output_dir: Path) -> bool:
     html = VIEWER_TEMPLATE.read_text(encoding="utf-8")
     data = json.loads(conversations_json.read_text(encoding="utf-8"))
 
+    # Only embed the conversation index (metadata without messages) inline.
+    # Messages are loaded on-demand per conversation to avoid bloating the HTML.
     index = []
-    messages_map = {}
     for conv in data.get("conversations", []):
-        conv_id = conv.get("id", "")
-        messages = conv.get("messages", [])
-        if messages:
-            messages_map[conv_id] = messages
         index.append({key: value for key, value in conv.items() if key != "messages"})
 
     html = html.replace(
         '<script type="application/json" id="conv-index">[]</script>',
         f'<script type="application/json" id="conv-index">{_json_for_html_script(index)}</script>',
     )
-    html = html.replace(
-        '<script type="application/json" id="conv-messages">{}</script>',
-        f'<script type="application/json" id="conv-messages">{_json_for_html_script(messages_map)}</script>',
-    )
+    # Leave conv-messages empty — viewer loads messages on demand via fetch
 
     output_dir.mkdir(parents=True, exist_ok=True)
     index_html.write_text(html, encoding="utf-8")
@@ -103,4 +97,24 @@ def main():
     print(f"Done: {total} conversations -> {index_html}")
 
     if not args.no_open:
-        os.system(f'open "{index_html}"')
+        # Start a local HTTP server so the viewer can fetch conversations.json
+        # (browsers block fetch from file:// due to CORS)
+        import http.server
+        import socket
+
+        def _find_free_port():
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("127.0.0.1", 0))
+                return s.getsockname()[1]
+
+        port = _find_free_port()
+        # Start server in background process
+        server_proc = subprocess.Popen(
+            [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+            cwd=str(output_dir),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        url = f"http://127.0.0.1:{port}/index.html"
+        print(f"Serving at {url}  (PID {server_proc.pid})")
+        os.system(f'open "{url}"')

@@ -1155,12 +1155,11 @@ let activeTag = '';
 
 function loadData() {
   var indexEl = document.getElementById('conv-index');
-  var msgsEl = document.getElementById('conv-messages');
   try {
     var indexText = indexEl ? indexEl.textContent.trim() : '';
     if (indexText && indexText !== '[]') {
       allConversations = JSON.parse(indexText);
-      allMessages = msgsEl ? JSON.parse(msgsEl.textContent) : {};
+      // Messages are now loaded on-demand per conversation, not all at once
       buildDerivedIndexes();
       requestAnimationFrame(renderList);
       requestAnimationFrame(selectConversationFromLocation);
@@ -1174,6 +1173,37 @@ function loadData() {
     requestAnimationFrame(renderList);
     requestAnimationFrame(selectConversationFromLocation);
   }).catch(showError);
+}
+
+var _messageCache = {};
+var _allDataCache = null;
+function loadMessagesForConversation(id, callback) {
+  if (allMessages[id]) { callback(allMessages[id]); return; }
+  if (_messageCache[id]) { callback(_messageCache[id]); return; }
+  // Check conv.messages
+  for (var i = 0; i < allConversations.length; i++) {
+    if (allConversations[i].id === id && allConversations[i].messages && allConversations[i].messages.length) {
+      _messageCache[id] = allConversations[i].messages;
+      callback(_messageCache[id]);
+      return;
+    }
+  }
+  // Fetch from conversations.json
+  fetch(DATA_PATH).then(function(r){ return r.json(); }).then(function(data){
+    var convs = Array.isArray(data) ? data : (data.conversations || []);
+    // Cache all messages from the response
+    for (var i = 0; i < convs.length; i++) {
+      var c = convs[i];
+      if (c.messages && c.messages.length) {
+        _messageCache[c.id] = c.messages;
+      }
+    }
+    if (_messageCache[id]) {
+      callback(_messageCache[id]);
+    } else {
+      callback([]);
+    }
+  }).catch(function(){ callback([]); });
 }
 
 function showError(err) {
@@ -2458,9 +2488,23 @@ function selectConversation(id) {
   if (!conv) return;
 
   var right = document.getElementById('right');
+  // Show loading indicator while fetching messages
+  right.innerHTML = '<div class="loading"><div class="spinner"></div> Loading conversation...</div>';
+
+  loadMessagesForConversation(id, function(loadedMessages) {
+    // Store in allMessages for backwards compatibility
+    if (loadedMessages && loadedMessages.length) {
+      allMessages[id] = loadedMessages;
+    }
+    _renderConversation(conv, loadedMessages || []);
+  });
+}
+
+function _renderConversation(conv, messages) {
+  var id = conv.id;
+  var right = document.getElementById('right');
   var title = conv.title || conv.name || 'Untitled';
   var titlePayload = buildHeaderTitlePayload(title);
-  var messages = allMessages[id] || conv.messages || [];
   var analysis = analyzeConversation(messages);
   var summary = buildQuickSummary(messages, analysis);
   var msgCount = getDisplayMessageCount(conv);
