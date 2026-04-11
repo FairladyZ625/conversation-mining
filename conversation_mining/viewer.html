@@ -1566,6 +1566,9 @@ function getConversationMessages(conv) {
 }
 
 function getDisplayMessageCount(conv) {
+  if (conv.user_msg_count !== undefined || conv.assistant_msg_count !== undefined) {
+    return (conv.user_msg_count || 0) + (conv.assistant_msg_count || 0);
+  }
   var msgs = getConversationMessages(conv);
   var count = 0;
   for (var i = 0; i < msgs.length; i++) {

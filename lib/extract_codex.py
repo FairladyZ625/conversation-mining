@@ -42,27 +42,15 @@ def load_subagent_info():
 
 def is_likely_subagent(first_user_text: str) -> bool:
     """Heuristic: detect machine-generated sub-agent prompts.
-    Indicators: English-only, short, imperative style, ACK patterns.
+    Conservative: only match obvious machine patterns (ACK/CODEX_OK heartbeats).
+    Real user messages (even short English ones) are NOT marked as sub-agents.
     """
     import re
     text = first_user_text.strip()
     if not text:
-        return True  # Empty prompt = likely sub-agent
-    # Contains Chinese = real user
-    if re.search(r'[\u4e00-\u9fff]', text):
         return False
-    # ACK/heartbeat patterns
+    # ACK/heartbeat patterns — these are definitively machine-generated
     if re.match(r'^(Reply (with exactly|exactly)|INPUT_ACK|CODEX_OK)', text, re.IGNORECASE):
-        return True
-    # English-only, short imperative (< 300 chars) = likely sub-agent task dispatch
-    if len(text) < 300:
-        return True
-    # Long English-only prompts that start with imperatives = likely sub-agent research tasks
-    imperative_starts = ('Investigate', 'Inspect', 'Review', 'Analyze', 'Read', 'Check',
-                         'Audit', 'Search', 'Find', 'Update', 'Create', 'Write', 'Build',
-                         'Refactor', 'Optimize', 'Test', 'Fix', 'Implement', 'Compare',
-                         'Summarize', 'Describe', 'Evaluate', 'Explore')
-    if any(text.startswith(kw) for kw in imperative_starts):
         return True
     return False
 
