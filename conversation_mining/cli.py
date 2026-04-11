@@ -34,6 +34,60 @@ def run_export(days: int, date: str | None, output_dir: Path, markdown_dir: str 
     return result.returncode == 0
 
 
+def _content_fingerprint(conv: dict) -> str:
+    """Generate a fingerprint for dedup: title + first user messages."""
+    title = (conv.get("title") or "").strip().lower()[:120]
+    msgs = conv.get("messages", [])
+    user_texts = []
+    for m in msgs:
+        if m.get("role") == "user":
+            text = (m.get("text") or m.get("content") or "").strip()[:150]
+            if text:
+                user_texts.append(text)
+        if len(user_texts) >= 3:
+            break
+    payload = title + "|" + "|".join(user_texts)
+    return payload
+
+
+def dedup_conversations(conversations: list) -> list:
+    """Remove content-duplicate conversations, keeping the most complete version.
+
+    Dedup criteria: conversations with the same content fingerprint
+    (title + first 3 user messages) are considered duplicates.
+    Keep the version with the most messages (most complete transcript).
+    """
+    groups: dict[str, list[dict]] = {}
+    for conv in conversations:
+        fp = _content_fingerprint(conv)
+        if not fp or fp == "|":
+            # No meaningful content — keep as-is (unique)
+            continue
+        groups.setdefault(fp, []).append(conv)
+
+    # Build set of IDs to remove
+    remove_ids: set[str] = set()
+    for fp, group in groups.items():
+        if len(group) <= 1:
+            continue
+        # Sort by completeness: most messages first, then longest title
+        group.sort(
+            key=lambda c: (
+                (c.get("user_msg_count") or 0) + (c.get("assistant_msg_count") or 0),
+                len(c.get("title") or ""),
+            ),
+            reverse=True,
+        )
+        # Keep the first (most complete), mark rest for removal
+        for dup in group[1:]:
+            remove_ids.add(dup.get("id", ""))
+
+    if remove_ids:
+        print(f"  去重: 移除 {len(remove_ids)} 条重复会话")
+
+    return [c for c in conversations if c.get("id", "") not in remove_ids]
+
+
 def build_html(output_dir: Path) -> bool:
     conversations_json = output_dir / "conversations.json"
     index_html = output_dir / "index.html"
@@ -47,10 +101,14 @@ def build_html(output_dir: Path) -> bool:
     html = VIEWER_TEMPLATE.read_text(encoding="utf-8")
     data = json.loads(conversations_json.read_text(encoding="utf-8"))
 
+    # Global dedup: remove content-duplicate conversations
+    all_convs = data.get("conversations", [])
+    deduped = dedup_conversations(all_convs)
+
     # Only embed the conversation index (metadata without messages) inline.
     # Messages are loaded on-demand per conversation to avoid bloating the HTML.
     index = []
-    for conv in data.get("conversations", []):
+    for conv in deduped:
         index.append({key: value for key, value in conv.items() if key != "messages"})
 
     html = html.replace(
