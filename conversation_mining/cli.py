@@ -101,7 +101,8 @@ def build_html(output_dir: Path) -> bool:
     html = VIEWER_TEMPLATE.read_text(encoding="utf-8")
     data = json.loads(conversations_json.read_text(encoding="utf-8"))
 
-    # Global dedup: remove content-duplicate conversations
+    # conversations.json is already deduped by export_all.py --dedup.
+    # Apply viewer-level dedup as a safety net for any remaining duplicates.
     all_convs = data.get("conversations", [])
     deduped = dedup_conversations(all_convs)
 

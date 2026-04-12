@@ -258,7 +258,9 @@ def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
 
         first_user = next((message["text"][:40] for message in messages if message["role"] == "user"), "")
         first_user_full = next((message["text"] for message in messages if message["role"] == "user"), "")
-        subagent_summary = _extract_subagent_summary(first_user_full) if session.get("is_subagent") else ""
+        # Content heuristic: smoke-test / ACK sessions are sub-agents even if not in subagents/ dir
+        is_subagent = bool(session.get("is_subagent")) or _is_claude_smoke_test(first_user_full)
+        subagent_summary = _extract_subagent_summary(first_user_full) if is_subagent else ""
         title = subagent_summary or first_user or session_id[:40]
         upsert_conversation(index, {
             "id": make_conv_id("claude", date_str, session_id),
@@ -268,9 +270,9 @@ def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
             "project": decode_project_name(session.get("project", "")),
             "session_id": session_id,
             "first_ts": session.get("first_ts", ""),
-            "is_subagent": bool(session.get("is_subagent")),
+            "is_subagent": is_subagent,
             "parent_session_id": session.get("parent_session_id", ""),
-            "launch_prompt": first_user_full if session.get("is_subagent") else "",
+            "launch_prompt": first_user_full if is_subagent else "",
             "subagent_summary": subagent_summary,
             "user_msg_count": sum(1 for message in messages if message["role"] == "user"),
             "assistant_msg_count": sum(1 for message in messages if message["role"] == "assistant"),
@@ -378,6 +380,36 @@ def export_antigravity(date_str: str, existing_ids: set, index: dict) -> int:
     return exported
 
 
+_SMOKE_TEST_RE = re.compile(
+    r"^(Reply (with exactly|exactly)|reply exactly|INPUT_ACK|CODEX_OK|ACP smoke|ACPX|DIRECT_CODEX)",
+    re.IGNORECASE,
+)
+
+
+def _is_claude_smoke_test(first_user_text: str) -> bool:
+    """Detect Claude smoke-test / ACK sessions by content heuristic."""
+    text = (first_user_text or "").strip()
+    if not text:
+        return False
+    return bool(_SMOKE_TEST_RE.match(text))
+
+
+def _backfill_claude_subagent(index: dict):
+    """Backfill is_subagent for existing Claude conversations that are smoke tests."""
+    claude_convs = [c for c in index.get("conversations", []) if c.get("source") == "claude"]
+    backfilled = 0
+    for conv in claude_convs:
+        if conv.get("is_subagent"):
+            continue
+        msgs = conv.get("messages", [])
+        first_user = next((m.get("text", "") for m in msgs if m.get("role") == "user"), "")
+        if _is_claude_smoke_test(first_user):
+            conv["is_subagent"] = True
+            backfilled += 1
+    if backfilled:
+        print(f"  回填 Claude 子代理标记: {backfilled} 条")
+
+
 def _backfill_codex_subagent(index: dict):
     """Backfill is_subagent for existing Codex conversations using SQLite metadata + content heuristic."""
     codex_convs = [c for c in index.get("conversations", []) if c.get("source") == "codex"]
@@ -408,6 +440,69 @@ def _backfill_codex_subagent(index: dict):
         print(f"  回填 Codex 子代理标记: {backfilled} 条")
 
 
+def _content_hash(conv: dict) -> str:
+    """基于 messages 生成内容哈希，用于判断会话是否有变化"""
+    msgs = conv.get("messages", [])
+    if not msgs:
+        return ""
+    last_text = msgs[-1].get("text", "")[:200] if msgs else ""
+    raw = f"{len(msgs)}:{last_text}"
+    return hashlib.md5(raw.encode()).hexdigest()[:12]
+
+
+def _dedup_by_content(index: dict, markdown_dir: Path | None = None) -> int:
+    """内容去重：对内容完全相同的会话，保留消息数最多的，删除其余副本。
+
+    使用前 10 条消息各取前 100 字符拼接的 MD5 作为内容指纹。
+    返回删除的会话数量。
+    """
+    conversations = index.get("conversations", [])
+
+    # 计算内容指纹
+    def _fingerprint(c: dict) -> str:
+        msgs = c.get("messages", [])
+        parts = []
+        for m in msgs[:10]:
+            parts.append((m.get("role", "") + ":" + (m.get("text") or "")[:100]))
+        raw = "|".join(parts)
+        return hashlib.md5(raw.encode()).hexdigest() if raw else ""
+
+    groups: dict[str, list[dict]] = {}
+    for conv in conversations:
+        fp = _fingerprint(conv)
+        if not fp:
+            continue
+        groups.setdefault(fp, []).append(conv)
+
+    remove_ids: set[str] = set()
+    for fp, group in groups.items():
+        if len(group) <= 1:
+            continue
+        # 保留消息数最多的（相同则保留最早日期的）
+        group.sort(
+            key=lambda c: (
+                (c.get("user_msg_count") or 0) + (c.get("assistant_msg_count") or 0),
+                -(len(c.get("date") or "")),
+            ),
+            reverse=True,
+        )
+        for dup in group[1:]:
+            remove_ids.add(dup.get("id", ""))
+            # 清理对应 markdown 文件
+            tp = dup.get("transcript_path", "")
+            if tp and Path(tp).exists():
+                try:
+                    Path(tp).unlink()
+                except Exception:
+                    pass
+
+    if remove_ids:
+        index["conversations"] = [c for c in conversations if c.get("id", "") not in remove_ids]
+        print(f"  内容去重: 删除 {len(remove_ids)} 条重复会话，保留 {len(index['conversations'])} 条")
+
+    return len(remove_ids)
+
+
 def _build_search_index(index: dict):
     """导出时生成轻量搜索索引 search_index.json"""
     search_file = OUTPUT_BASE / "search_index.json"
@@ -436,6 +531,7 @@ def main():
     parser.add_argument("--output-dir", help=f"Directory for JSON/viewer export data (default: {OUTPUT_BASE})")
     parser.add_argument("--markdown-dir", help=f"Directory for human-readable markdown transcripts (default: {_default_markdown_dir()})")
     parser.add_argument("--clean", action="store_true", help="Remove orphaned transcript files not in conversations.json")
+    parser.add_argument("--dedup", action="store_true", help="Deduplicate conversations by content hash and backfill sub-agent labels")
     args = parser.parse_args()
 
     if args.output_dir:
@@ -480,6 +576,14 @@ def main():
 
     # Backfill is_subagent for existing Codex conversations missing the field
     _backfill_codex_subagent(index)
+    # Backfill is_subagent for Claude smoke-test conversations
+    _backfill_claude_subagent(index)
+
+    # --dedup: deduplicate by content hash
+    if args.dedup:
+        _dedup_by_content(index, MARKDOWN_DIR)
+        # Mark all remaining conversations as dirty so transcripts are regenerated
+        dirty_ids = {c.get("id", "") for c in index.get("conversations", [])}
 
     _sanitize_index_metadata(index)
 
@@ -502,7 +606,10 @@ def main():
 
     print(f"\n{'=' * 40}")
     print(f"  新增: {total} 个会话")
-    print(f"  总计: {len(index['conversations'])} 个会话")
+    all_convs = index['conversations']
+    sub_count = sum(1 for c in all_convs if c.get("is_subagent"))
+    main_count = len(all_convs) - sub_count
+    print(f"  总计: {len(all_convs)} 个会话 (主会话 {main_count} + 子代理 {sub_count})")
     print(f"  索引: {INDEX_FILE}")
     print(f"  Markdown: {MARKDOWN_DIR}")
     print(f"{'=' * 40}")
