@@ -1514,8 +1514,8 @@ function scoreRelatedConversation(baseConv, candidate) {
     reasons.push(sharedTitleTokens + ' title overlap');
   }
 
-  var baseDate = new Date(baseConv.date || baseConv.created_at || baseConv.timestamp || 0).getTime();
-  var candidateDate = new Date(candidate.date || candidate.created_at || candidate.timestamp || 0).getTime();
+  var baseDate = conversationSortTime(baseConv);
+  var candidateDate = conversationSortTime(candidate);
   if (baseDate && candidateDate) {
     var diffDays = Math.abs(baseDate - candidateDate) / 86400000;
     if (diffDays <= 2) score += 1;
@@ -1538,7 +1538,7 @@ function getRelatedTaskConversations(conv) {
   }
   matches.sort(function(a, b) {
     if (b.score !== a.score) return b.score - a.score;
-    return String(b.conv.date || '').localeCompare(String(a.conv.date || ''));
+    return conversationSortTime(b.conv) - conversationSortTime(a.conv);
   });
   return matches.slice(0, 8);
 }
@@ -1654,11 +1654,21 @@ function renderSubagentBlock(callMsg, matches, fallbackTitle) {
   return html;
 }
 
+function conversationDisplayDate(conv) {
+  return conv.last_active_at || conv.updated_at || conv.date || conv.created_at || conv.timestamp || '';
+}
+
+function conversationSortTime(conv) {
+  var raw = conversationDisplayDate(conv);
+  var value = new Date(raw || 0).getTime();
+  return isNaN(value) ? 0 : value;
+}
+
 function groupByDate(convs) {
   var groups = {};
   for (var i = 0; i < convs.length; i++) {
     var c = convs[i];
-    var d = c.date || c.created_at || c.timestamp || '';
+    var d = conversationDisplayDate(c);
     var label = d ? new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}) : 'Unknown Date';
     if (!groups[label]) groups[label] = [];
     groups[label].push(c);
@@ -2429,9 +2439,7 @@ function renderList() {
   });
 
   filtered.sort(function(a,b) {
-    var da = new Date(a.date || a.created_at || a.timestamp || 0);
-    var db = new Date(b.date || b.created_at || b.timestamp || 0);
-    return db - da;
+    return conversationSortTime(b) - conversationSortTime(a);
   });
 
   document.getElementById('stats').textContent = filtered.length + ' / ' + getVisibleConversationBaseCount();
@@ -2567,7 +2575,7 @@ function _renderConversation(conv, messages) {
   var analysis = analyzeConversation(messages);
   var summary = buildQuickSummary(messages, analysis);
   var msgCount = getDisplayMessageCount(conv);
-  var dateStr = conv.date || conv.created_at || conv.timestamp || '';
+  var dateStr = conversationDisplayDate(conv);
   var dateLabel = dateStr ? new Date(dateStr).toLocaleString() : '';
   var transcriptPath = getConversationFilePath(conv);
   var viewerLink = getConversationViewerLink(conv);

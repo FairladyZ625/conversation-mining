@@ -84,6 +84,9 @@ def _sanitize_conversation_metadata(conversation: dict) -> dict:
         "id",
         "source",
         "date",
+        "created_at",
+        "updated_at",
+        "last_active_at",
         "title",
         "project",
         "session_id",
@@ -296,20 +299,25 @@ def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
 
 def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
     try:
-        from lib.extract_codex import extract_conversation, find_sessions_by_date, load_thread_titles, load_subagent_info
+        from lib.extract_codex import (
+            extract_conversation,
+            find_sessions_by_date,
+            load_thread_metadata,
+            load_thread_titles,
+            load_subagent_info,
+        )
     except ImportError as error:
         print(f"  [Codex] Import error: {error}")
         return 0
 
     titles = load_thread_titles()
+    thread_meta = load_thread_metadata()
     child_ids, parent_map = load_subagent_info()
     sessions = find_sessions_by_date(date_str)
     exported = 0
 
     for session_id, filepath in sorted(sessions.items()):
-        existing_key = f"codex::{session_id}"
-        if existing_key in existing_ids:
-            continue
+        existing = find_existing_conversation(index, "codex", session_id)
         messages, meta = extract_conversation(filepath)
         if not messages:
             continue
@@ -320,14 +328,24 @@ def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
         is_subagent = session_id in child_ids or is_likely_subagent(first_user)
         parent_session_id = parent_map.get(session_id, "")
 
-        title = titles.get(session_id, "")
+        thread_info = thread_meta.get(session_id, {})
+        created_at = thread_info.get("created_at") or (meta.get("timestamp", "") if meta else "")
+        updated_at = thread_info.get("updated_at") or created_at
+        last_active_at = updated_at or created_at
+        record_date = (existing.get("date", "") if existing else "") or (created_at[:10] if created_at else "") or date_str
+        conversation_id = (existing.get("id", "") if existing else "") or make_conv_id("codex", record_date, session_id)
+
+        title = titles.get(session_id, "") or thread_info.get("title", "")
         display_title = title or (messages[0]["text"][:50] if messages else session_id[:40])
         upsert_conversation(index, {
-            "id": make_conv_id("codex", date_str, session_id),
+            "id": conversation_id,
             "source": "codex",
-            "date": date_str,
+            "date": record_date,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "last_active_at": last_active_at,
             "title": display_title,
-            "project": meta.get("cwd", "") if meta else "",
+            "project": thread_info.get("cwd", "") or (meta.get("cwd", "") if meta else ""),
             "session_id": session_id,
             "is_subagent": is_subagent,
             "parent_session_id": parent_session_id,
@@ -335,7 +353,6 @@ def export_codex(date_str: str, existing_ids: set, index: dict) -> int:
             "assistant_msg_count": sum(1 for message in messages if message["role"] == "assistant"),
             "messages": [{"role": message["role"], "text": message["text"]} for message in messages],
         })
-        existing_ids.add(existing_key)
         exported += 1
         label = " [sub-agent]" if is_subagent else ""
         print(f"    ✓ [Codex]{label} {display_title[:60]}")

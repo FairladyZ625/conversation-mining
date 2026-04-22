@@ -99,6 +99,53 @@ def load_history_for_session(session_id):
     return messages
 
 
+def _normalize_sqlite_timestamp(raw_value):
+    """Normalize Codex SQLite timestamps to epoch seconds."""
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    # Newer Codex builds store seconds; older assumptions in this skill used ms.
+    if value >= 10**12:
+        value //= 1000
+    return value
+
+
+def _iso_from_epoch_seconds(raw_value):
+    value = _normalize_sqlite_timestamp(raw_value)
+    if value is None:
+        return ""
+    return datetime.fromtimestamp(value).isoformat()
+
+
+def load_thread_metadata():
+    """Load Codex thread metadata for activity-based export and sorting."""
+    metadata = {}
+    if not STATE_DB.exists():
+        return metadata
+    try:
+        conn = sqlite3.connect(str(STATE_DB))
+        cur = conn.execute(
+            "SELECT id, title, cwd, created_at, updated_at, rollout_path FROM threads"
+        )
+        for tid, title, cwd, created_at, updated_at, rollout_path in cur:
+            created_iso = _iso_from_epoch_seconds(created_at)
+            updated_iso = _iso_from_epoch_seconds(updated_at) or created_iso
+            metadata[tid] = {
+                "title": title or "",
+                "cwd": cwd or "",
+                "created_at": created_iso,
+                "updated_at": updated_iso,
+                "rollout_path": rollout_path or "",
+            }
+        conn.close()
+    except Exception:
+        pass
+    return metadata
+
+
 def find_sessions_by_date(target_date: str):
     """
     找到某天活跃的所有会话文件。
@@ -140,26 +187,28 @@ def find_sessions_by_date(target_date: str):
                     found[sid] = str(f)
 
     # 方法3: 从 SQLite 查找该天有活动的 thread
-    if STATE_DB.exists():
-        try:
-            conn = sqlite3.connect(str(STATE_DB))
-            # updated_at 是毫秒时间戳
-            day_start = int(dt.timestamp() * 1000)
-            day_end = int((dt + timedelta(days=1)).timestamp() * 1000)
-            cur = conn.execute(
-                "SELECT id, rollout_path FROM threads WHERE "
-                "(created_at BETWEEN ? AND ?) OR (updated_at BETWEEN ? AND ?)",
-                (day_start, day_end, day_start, day_end)
-            )
-            for row in cur:
-                tid, rollout_path = row
-                if tid not in found and rollout_path:
-                    full_path = CODEX_DIR / rollout_path
-                    if full_path.exists():
-                        found[tid] = str(full_path)
-            conn.close()
-        except Exception as e:
-            print(f"  [警告] SQLite 查询失败: {e}")
+    # 注意：Codex 当前 SQLite 时间戳是秒，不是毫秒；这里兼容两种单位。
+    try:
+        for tid, thread_meta in load_thread_metadata().items():
+            rollout_path = thread_meta.get("rollout_path", "")
+            if not rollout_path:
+                continue
+            full_path = Path(rollout_path)
+            if not full_path.is_absolute():
+                full_path = CODEX_DIR / rollout_path
+            if not full_path.exists():
+                continue
+
+            created_date = thread_meta.get("created_at", "")[:10]
+            updated_date = thread_meta.get("updated_at", "")[:10]
+            mtime_date = datetime.fromtimestamp(full_path.stat().st_mtime).strftime("%Y-%m-%d")
+
+            if tid in found:
+                continue
+            if target_date in {created_date, updated_date, mtime_date}:
+                found[tid] = str(full_path)
+    except Exception as e:
+        print(f"  [警告] SQLite 查询失败: {e}")
 
     return found
 

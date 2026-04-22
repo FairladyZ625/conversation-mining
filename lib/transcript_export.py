@@ -170,10 +170,14 @@ def build_search_entry(conversation: dict) -> dict:
     files = extract_file_mentions(messages, limit=4)
     commands = extract_command_mentions(messages, limit=3)
     keywords = list(dict.fromkeys(title_words + signals + files + commands))[:15]
+    last_active_at = conversation.get("last_active_at") or conversation.get("updated_at") or ""
+    indexed_date = (last_active_at or conversation.get("date", "") or "")[:10]
     return {
         "id": conversation.get("id", ""),
         "source": conversation.get("source", ""),
-        "date": conversation.get("date", ""),
+        "date": indexed_date,
+        "created_date": conversation.get("date", ""),
+        "last_active_at": last_active_at,
         "session_id": conversation.get("session_id", ""),
         "title": title[:120],
         "keywords": keywords,
