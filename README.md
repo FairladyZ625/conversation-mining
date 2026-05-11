@@ -1,6 +1,9 @@
 # conversation-mining
 
-Export local Claude Code, Codex, and Antigravity conversations into Markdown plus a static HTML viewer.
+[![skills.sh](https://skills.sh/b/FairladyZ625/conversation-mining)](https://skills.sh/FairladyZ625/conversation-mining)
+
+Export local Claude Code, Codex, and Antigravity conversations into Markdown plus
+a static HTML viewer.
 
 This project is designed for local forensics and recall:
 
@@ -18,7 +21,15 @@ It can be used in two ways:
 ## Copy This To Your AI
 
 ```text
-Install and learn `conversation-mining` from https://github.com/FairladyZ625/conversation-mining . Read README.md, SKILL.md, and AI_INSTALL.md, then install it locally as both a skill and a CLI if supported, and verify with `conversation-mining --no-open --days 1`.
+Install and learn `conversation-mining` from:
+https://github.com/FairladyZ625/conversation-mining
+
+If supported, install the skill with:
+npx skills add FairladyZ625/conversation-mining --skill conversation-mining
+
+Read README.md, SKILL.md, and AI_INSTALL.md. Install it locally as both a skill
+and a CLI if supported. Verify with:
+conversation-mining --no-open --days 1
 ```
 
 ## What It Supports
@@ -30,14 +41,16 @@ Install and learn `conversation-mining` from https://github.com/FairladyZ625/con
   - reads local `~/.codex/sessions`, `history.jsonl`, and `state_5.sqlite`
 - Antigravity
   - reads local `~/Library/Application Support/Antigravity/.../state.vscdb`
-  - extracts trajectory summaries and links AG brain artifacts from `~/.gemini/antigravity/brain/<uuid>/` when available
+  - extracts trajectory summaries and links AG brain artifacts from
+    `~/.gemini/antigravity/brain/<uuid>/` when available
 
 ## Current Status
 
 This is a pragmatic local-export tool, not an official SDK.
 
 - Claude and Codex usually provide much richer transcript coverage
-- Antigravity currently behaves more like task-summary extraction than full raw transcript recovery
+- Antigravity currently behaves more like task-summary extraction than full raw
+  transcript recovery
 - AG artifact linking works when a stable local brain workspace can be matched
 
 ## Quick Start
@@ -82,7 +95,38 @@ conversation-mining --date 2026-03-19
 
 This repository also includes [SKILL.md](./SKILL.md).
 
-If your agent supports skill installation from a git repository, install this repo as a skill and then invoke `conversation-mining` for:
+It can be installed with the open Agent Skills CLI:
+
+Preview the available skill:
+
+```bash
+npx skills add FairladyZ625/conversation-mining --list
+```
+
+Install into the current project:
+
+```bash
+npx skills add FairladyZ625/conversation-mining --skill conversation-mining
+```
+
+Install globally for Codex:
+
+```bash
+npx skills add FairladyZ625/conversation-mining \
+  --skill conversation-mining \
+  --agent codex \
+  --global \
+  -y
+```
+
+Verify a global Codex install:
+
+```bash
+npx skills list --global --agent codex
+```
+
+If your agent supports skill installation from a git repository, install this
+repo as a skill and then invoke `conversation-mining` for:
 
 - locating a conversation by date or id
 - exporting recent history

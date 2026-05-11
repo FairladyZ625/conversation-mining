@@ -1,5 +1,7 @@
 # conversation-mining
 
+[![skills.sh](https://skills.sh/b/FairladyZ625/conversation-mining)](https://skills.sh/FairladyZ625/conversation-mining)
+
 把本地的 Claude Code、Codex、Antigravity 对话导出成 Markdown，并生成一个静态 HTML 查看器。
 
 这个项目适合做本地回溯和取证：
@@ -18,7 +20,15 @@
 ## 复制给你的 AI
 
 ```text
-请从 https://github.com/FairladyZ625/conversation-mining 安装并学习 `conversation-mining`。阅读仓库里的 README.md、SKILL.md 和 AI_INSTALL.md，按仓库说明在本地安装；如果支持的话，同时把它装成 skill 和 CLI。安装后用 `conversation-mining --no-open --days 1` 验证。
+请从这里安装并学习 `conversation-mining`：
+https://github.com/FairladyZ625/conversation-mining
+
+如果支持开放 Agent Skills CLI，优先使用：
+npx skills add FairladyZ625/conversation-mining --skill conversation-mining
+
+阅读仓库里的 README.md、SKILL.md 和 AI_INSTALL.md，按仓库说明在本地安装；
+如果支持的话，同时把它装成 skill 和 CLI。安装后用下面命令验证：
+conversation-mining --no-open --days 1
 ```
 
 ## 当前支持
@@ -82,6 +92,36 @@ conversation-mining --date 2026-03-19
 ## 作为 Skill 使用
 
 仓库里已经包含 [SKILL.md](./SKILL.md)。
+
+可以通过开放 Agent Skills CLI 安装：
+
+预览仓库里的 skill：
+
+```bash
+npx skills add FairladyZ625/conversation-mining --list
+```
+
+安装到当前项目：
+
+```bash
+npx skills add FairladyZ625/conversation-mining --skill conversation-mining
+```
+
+安装到 Codex 全局 Skill 目录：
+
+```bash
+npx skills add FairladyZ625/conversation-mining \
+  --skill conversation-mining \
+  --agent codex \
+  --global \
+  -y
+```
+
+验证 Codex 全局安装：
+
+```bash
+npx skills list --global --agent codex
+```
 
 如果你的 agent 支持从 git 仓库安装 skill，那么装好以后就可以直接把它当 `conversation-mining` 来用，适合：
 

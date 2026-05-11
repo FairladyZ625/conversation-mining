@@ -1,6 +1,7 @@
 # AI Install Guide
 
-This file is for coding agents that are asked to install and configure `conversation-mining` for a user.
+This file is for coding agents that are asked to install and configure
+`conversation-mining` for a user.
 
 Repository:
 
@@ -20,25 +21,43 @@ Set up this repository locally so the user can use:
 ## Install Flow
 
 1. Clone the repository to a sensible local tools/workspace directory.
-2. If the repository already exists locally, update it instead of creating a duplicate.
-3. Read:
+1. If the repository already exists locally, update it instead of creating a duplicate.
+1. Read:
    - `README.md`
    - `SKILL.md`
    - `pyproject.toml`
-4. Install the Python package in editable mode:
+1. If the runtime supports the open Agent Skills CLI, install or preview the skill:
+
+```bash
+npx skills add FairladyZ625/conversation-mining --list
+npx skills add FairladyZ625/conversation-mining --skill conversation-mining
+```
+
+For a global Codex install:
+
+```bash
+npx skills add FairladyZ625/conversation-mining \
+  --skill conversation-mining \
+  --agent codex \
+  --global \
+  -y
+```
+
+1. Install the Python package in editable mode:
 
 ```bash
 python3 -m pip install -e .
 ```
 
-5. If the runtime supports repo-based skill installation, also register this repository as a skill using `SKILL.md`.
-6. Verify the CLI:
+1. If the runtime does not support `npx skills`, register this repository as a
+   skill using `SKILL.md`.
+1. Verify the CLI:
 
 ```bash
 conversation-mining --no-open --days 1
 ```
 
-7. Report back:
+1. Report back:
    - local repository path
    - whether skill installation succeeded
    - whether CLI installation succeeded
