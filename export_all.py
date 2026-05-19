@@ -252,27 +252,33 @@ def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
 
     for session in sorted(sessions, key=lambda item: item.get("first_ts", "")):
         session_id = session["session_id"]
-        existing_key = f"claude::{session_id}"
-        if existing_key in existing_ids:
-            continue
-        messages = extract_conversation(session["filepath"], target_date=date_str)
+        existing = find_existing_conversation(index, "claude", session_id)
+        messages = extract_conversation(session["filepath"])
         if not messages:
             continue
 
         first_user = next((message["text"][:40] for message in messages if message["role"] == "user"), "")
         first_user_full = next((message["text"] for message in messages if message["role"] == "user"), "")
+        timestamps = [message.get("ts", "") for message in messages if message.get("ts")]
+        created_at = timestamps[0] if timestamps else session.get("first_ts", "")
+        updated_at = timestamps[-1] if timestamps else session.get("first_ts", "")
+        record_date = (existing.get("date", "") if existing else "") or (created_at[:10] if created_at else "") or date_str
+        conversation_id = (existing.get("id", "") if existing else "") or make_conv_id("claude", record_date, session_id)
         # Content heuristic: smoke-test / ACK sessions are sub-agents even if not in subagents/ dir
         is_subagent = bool(session.get("is_subagent")) or _is_claude_smoke_test(first_user_full)
         subagent_summary = _extract_subagent_summary(first_user_full) if is_subagent else ""
         title = subagent_summary or first_user or session_id[:40]
         upsert_conversation(index, {
-            "id": make_conv_id("claude", date_str, session_id),
+            "id": conversation_id,
             "source": "claude",
-            "date": date_str,
+            "date": record_date,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "last_active_at": updated_at or created_at,
             "title": title,
             "project": decode_project_name(session.get("project", "")),
             "session_id": session_id,
-            "first_ts": session.get("first_ts", ""),
+            "first_ts": created_at or session.get("first_ts", ""),
             "is_subagent": is_subagent,
             "parent_session_id": session.get("parent_session_id", ""),
             "launch_prompt": first_user_full if is_subagent else "",
@@ -290,7 +296,6 @@ def export_claude(date_str: str, existing_ids: set, index: dict) -> int:
                 for message in messages
             ],
         })
-        existing_ids.add(existing_key)
         exported += 1
         print(f"    ✓ [Claude] {title[:60]}")
 
