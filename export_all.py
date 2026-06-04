@@ -26,7 +26,7 @@ from lib.transcript_export import (  # noqa: E402
 CLAUDE_DIR = Path.home() / ".claude"
 OUTPUT_BASE = CLAUDE_DIR / "exported_conversations"
 INDEX_FILE = OUTPUT_BASE / "conversations.json"
-PREFERRED_MARKDOWN_DIR = Path("/Users/lizeyu/LocalLargeFiles/Converstions")
+PREFERRED_MARKDOWN_DIR = Path("/Users/lizeyu/Documents/ZeYu-AI-Brain/LOCAL-LARGE-FILES/agent-context/conversation-transcripts")
 MARKDOWN_DIR = PREFERRED_MARKDOWN_DIR if PREFERRED_MARKDOWN_DIR.parent.exists() else OUTPUT_BASE / "transcripts"
 
 

@@ -41,7 +41,7 @@ description: 统一检索和使用 Claude Code / Codex / AntiGravity 的历史�
 1. **导出最新对话**：运行 `python3 ~/.claude/skills/conversation-mining/export_all.py --days 7`，确保索引包含近一周内容（`--days 0` 会导出空列表，不要用）
 2. **定位会话**（优先使用搜索索引）：
    - 先读 `~/.claude/exported_conversations/search_index.json`，在 entries 中按 keywords/title 模糊匹配关键词（纯 JSON 读取，毫秒级）
-   - 如果索引不够精确 → 再 fallback 到 `conversations.json` 的 messages 全文搜索，或在 `/Users/lizeyu/LocalLargeFiles/Converstions/` 下的 md 文件中 Grep 搜索
+   - 如果索引不够精确 → 再 fallback 到 `conversations.json` 的 messages 全文搜索，或在 `/Users/lizeyu/Documents/ZeYu-AI-Brain/LOCAL-LARGE-FILES/agent-context/conversation-transcripts/` 下的 md 文件中 Grep 搜索
    - 如果用户给了对话 ID（如 `codex-20260327-e35f554d`）→ 在 `conversations.json` 中按 id 字段查找
    - 取匹配度最高的会话
 3. **读取完整 transcript**：从定位到的会话的 `transcript_path` 读取完整 markdown
