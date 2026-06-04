@@ -159,7 +159,7 @@ python3 convs.py --output-dir ~/tmp/conversation-mining-output
 把 Markdown transcript 写到指定目录：
 
 ```bash
-python3 convs.py --markdown-dir /Volumes/LIZEYU/Converstions
+python3 convs.py --markdown-dir /Users/lizeyu/LocalLargeFiles/Converstions
 ```
 
 高级用法：只导出 JSON / Markdown，不构建 viewer：
@@ -179,7 +179,7 @@ exported_conversations/
 独立的人类可读 transcript：
 
 ```text
-/Volumes/LIZEYU/Converstions/
+/Users/lizeyu/LocalLargeFiles/Converstions/
   2026-03-19/
     claude_*.md
     codex_*.md

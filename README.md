@@ -162,7 +162,7 @@ python3 convs.py --output-dir ~/tmp/conversation-mining-output
 Write Markdown transcripts to a custom directory:
 
 ```bash
-python3 convs.py --markdown-dir /Volumes/LIZEYU/Converstions
+python3 convs.py --markdown-dir /Users/lizeyu/LocalLargeFiles/Converstions
 ```
 
 Advanced: export only JSON/Markdown without building the viewer:
@@ -182,7 +182,7 @@ exported_conversations/
 Separate human-readable transcripts:
 
 ```text
-/Volumes/LIZEYU/Converstions/
+/Users/lizeyu/LocalLargeFiles/Converstions/
   2026-03-19/
     claude_*.md
     codex_*.md
