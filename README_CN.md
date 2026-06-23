@@ -2,7 +2,7 @@
 
 [![skills.sh](https://skills.sh/b/FairladyZ625/conversation-mining)](https://skills.sh/FairladyZ625/conversation-mining)
 
-把本地的 Claude Code、Codex、Antigravity 对话导出成 Markdown，并生成一个静态 HTML 查看器。
+把本地的 Claude Code、Codex、Antigravity、zCode 对话导出成 Markdown，并生成一个静态 HTML 查看器。
 
 这个项目适合做本地回溯和取证：
 
@@ -42,12 +42,16 @@ conversation-mining --no-open --days 1
   - 读取 `~/Library/Application Support/Antigravity/.../state.vscdb`
   - 提取 trajectory summaries
   - 尝试把 AG 会话关联到 `~/.gemini/antigravity/brain/<uuid>/` 里的本地产物
+- zCode
+  - 读取 `~/.zcode/cli/rollout/model-io-sess_*.jsonl`
+  - 从滚动上下文窗口重建完整会话（每个 full/tail turn 带 64 条消息窗口，贪心拼接覆盖 `[0, messageCount)`）
 
 ## 现状说明
 
 这是一个面向本地使用的实用工具，不是官方 SDK。
 
 - Claude / Codex 一般能拿到比较完整的 transcript
+- zCode 用滚动上下文窗口（固定 64 条），超长会话的早期消息无法从磁盘恢复
 - Antigravity 目前更像“任务摘要提取”，不是完整连续聊天还原
 - AG 产物关联只在本地 brain workspace id 能稳定匹配时生效
 
@@ -188,7 +192,7 @@ exported_conversations/
 
 ## Viewer 功能
 
-- 来源筛选：Claude / Codex / AG
+- 来源筛选：Claude / Codex / AG / zCode
 - 支持按标题、消息、工作区、标签、AG 产物信息搜索
 - 白天 / 夜间模式
 - 阅读模式：

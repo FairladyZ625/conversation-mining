@@ -1,6 +1,6 @@
 ---
 name: conversation-mining
-description: 统一检索和使用 Claude Code / Codex / AntiGravity 的历史对话。支持按日期、关键词、会话 ID、Conversation Reference、Conversation Prompt 找回原文，也支持在用户明确要求时，对指定会话或某天会话做提炼、总结、笔记整理。
+description: 统一检索和使用 Claude Code / Codex / AntiGravity / zCode 的历史对话。支持按日期、关键词、会话 ID、Conversation Reference、Conversation Prompt 找回原文，也支持在用户明确要求时，对指定会话或某天会话做提炼、总结、笔记整理。
 ---
 
 # Conversation Mining

@@ -76,6 +76,7 @@ conversation-mining --no-open --days 1
 - Codex local state under `~/.codex`
 - Antigravity local state under `~/Library/Application Support/Antigravity`
 - optional AG brain artifacts under `~/.gemini/antigravity/brain`
+- zCode local state under `~/.zcode/cli/rollout`
 
 ## Expected Output Location
 

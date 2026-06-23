@@ -2,7 +2,7 @@
 
 [![skills.sh](https://skills.sh/b/FairladyZ625/conversation-mining)](https://skills.sh/FairladyZ625/conversation-mining)
 
-Export local Claude Code, Codex, and Antigravity conversations into Markdown plus
+Export local Claude Code, Codex, Antigravity, and zCode conversations into Markdown plus
 a static HTML viewer.
 
 This project is designed for local forensics and recall:
@@ -43,6 +43,11 @@ conversation-mining --no-open --days 1
   - reads local `~/Library/Application Support/Antigravity/.../state.vscdb`
   - extracts trajectory summaries and links AG brain artifacts from
     `~/.gemini/antigravity/brain/<uuid>/` when available
+- zCode
+  - reads local `~/.zcode/cli/rollout/model-io-sess_*.jsonl`
+  - reconstructs the full conversation from the rolling context window
+    (each `full`/`tail` turn carries a 64-message window; greedy merge to
+    cover `[0, messageCount)`)
 
 ## Current Status
 
@@ -191,7 +196,7 @@ Separate human-readable transcripts:
 
 ## Viewer Features
 
-- source filters: Claude / Codex / AG
+- source filters: Claude / Codex / AG / zCode
 - search by title, message text, workspace, tags, and AG artifact metadata
 - light / dark mode
 - reading modes:
