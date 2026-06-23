@@ -26,7 +26,7 @@ from lib.transcript_export import (  # noqa: E402
 CLAUDE_DIR = Path.home() / ".claude"
 OUTPUT_BASE = CLAUDE_DIR / "exported_conversations"
 INDEX_FILE = OUTPUT_BASE / "conversations.json"
-PREFERRED_MARKDOWN_DIR = Path("/Volumes/LIZEYU/Converstions")
+PREFERRED_MARKDOWN_DIR = Path("/Users/lizeyu/Documents/ZeYu-AI-Brain/LOCAL-LARGE-FILES/agent-context/conversation-transcripts")
 MARKDOWN_DIR = PREFERRED_MARKDOWN_DIR if PREFERRED_MARKDOWN_DIR.parent.exists() else OUTPUT_BASE / "transcripts"
 
 
@@ -402,6 +402,41 @@ def export_antigravity(date_str: str, existing_ids: set, index: dict) -> int:
     return exported
 
 
+def export_zcode(date_str: str, existing_ids: set, index: dict) -> int:
+    """导出 zCode 原生会话（~/.zcode/cli/rollout/model-io-sess_*.jsonl）。
+
+    zCode 每行一个 turn 且每行重发完整历史，取 messageCount 最大的行作为完整会话。
+    """
+    try:
+        from lib.extract_zcode import extract_session, find_sessions_by_date
+    except ImportError as error:
+        print(f"  [zCode] Import error: {error}")
+        return 0
+
+    sessions = find_sessions_by_date(date_str)
+    exported = 0
+
+    for session_id, filepath in sorted(sessions.items()):
+        existing_key = f"zcode::{session_id}"
+        if existing_key in existing_ids:
+            # 已有记录，但 zCode 会话可能还在更新，仍尝试重新提取做增量更新
+            pass
+        session = extract_session(filepath)
+        if not session:
+            continue
+        existing = find_existing_conversation(index, "zcode", session_id)
+        record_date = (existing.get("date", "") if existing else "") or session.get("date", "") or date_str
+        conversation_id = (existing.get("id", "") if existing else "") or make_conv_id("zcode", record_date, session_id)
+        session["id"] = conversation_id
+        session["date"] = record_date
+        upsert_conversation(index, session)
+        existing_ids.add(existing_key)
+        exported += 1
+        print(f"    ✓ [zCode] {session.get('title', '')[:60]}")
+
+    return exported
+
+
 _SMOKE_TEST_RE = re.compile(
     r"^(Reply (with exactly|exactly)|reply exactly|INPUT_ACK|CODEX_OK|ACP smoke|ACPX|DIRECT_CODEX)",
     re.IGNORECASE,
@@ -587,6 +622,7 @@ def main():
         print(f"📅 {date_str}")
         total += export_claude(date_str, existing_ids, index)
         total += export_codex(date_str, existing_ids, index)
+        total += export_zcode(date_str, existing_ids, index)
         if index_pos == 0:
             total += export_antigravity(date_str, existing_ids, index)
 
